@@ -1,0 +1,45 @@
+{
+  "name": "ndi-multisite",
+  "version": "1.0.0",
+  "description": "13拠点 常時接続 映像音声共有アプリケーション",
+  "author": "Your Organization",
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "concurrently \"vite --port 5173 --strictPort\" \"npm run build:main -- --watch\" \"wait-on http://localhost:5173 dist/main/index.js && cross-env NODE_ENV=development electron .\"",
+    "build": "vite build && npm run build:main",
+    "build:main": "tsc -p tsconfig.main.json",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@stagetimerio/grandiose": "^0.2.0",
+    "bcryptjs": "^2.4.3",
+    "electron-log": "^5.1.0",
+    "electron-store": "^8.1.0",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "concurrently": "^8.0.0",
+    "cross-env": "^10.1.0",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.2.9",
+    "postcss": "^8.4.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "wait-on": "^7.2.0",
+    "zustand": "^4.5.0"
+  }
+}

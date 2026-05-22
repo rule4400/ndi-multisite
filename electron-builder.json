@@ -1,0 +1,35 @@
+{
+  "appId": "jp.yourorg.ndi-multisite",
+  "productName": "NDI Multisite",
+  "copyright": "Copyright © 2026",
+  "directories": { "output": "release" },
+  "files": [
+    "dist/**/*",
+    "assets/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    { "from": "assets", "to": "assets" }
+  ],
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "assets/icon.png"
+  },
+  "mac": {
+    "target": [
+      { "target": "dmg", "arch": ["x64", "arm64"] },
+      { "target": "zip", "arch": ["x64", "arm64"] }
+    ],
+    "icon": "assets/icon.png",
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "include": "installer.nsh"
+  },
+  "npmRebuild": true,
+  "buildDependenciesFromSource": false
+}
