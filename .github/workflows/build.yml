@@ -3,8 +3,8 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*'          # v1.0.0 などのタグをpushしたときに実行
-  workflow_dispatch:  # GitHub画面から手動実行も可能
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-mac:
@@ -18,6 +18,14 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Setup Python (distutils対応)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install setuptools (distutils補完)
+        run: pip install setuptools
 
       - name: Install dependencies
         run: npm ci
@@ -48,6 +56,17 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Setup Python (distutils対応)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install setuptools (distutils補完)
+        run: pip install setuptools
+
+      - name: Install Visual Studio Build Tools
+        uses: microsoft/setup-msbuild@v2
+
       - name: Install dependencies
         run: npm ci
 
@@ -62,7 +81,6 @@ jobs:
           name: win-release
           path: |
             release/*.exe
-            release/*.msi
           retention-days: 30
 
   release:
