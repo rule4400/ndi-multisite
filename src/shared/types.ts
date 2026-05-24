@@ -6,6 +6,7 @@ export interface Site {
   ndiSourceName: string;
   vpnIp: string;
   enabled: boolean;
+  hidden?: boolean;  // グリッドから非表示（NDI接続は維持）
 }
 
 export interface VideoFrame {

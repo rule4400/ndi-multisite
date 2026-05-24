@@ -140,7 +140,7 @@ function renderWebGL(gl: WebGLRenderingContext, data: Uint8Array, w: number, h: 
 function render2D(canvas: HTMLCanvasElement, data: Uint8Array, w: number, h: number): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  const imageData = new ImageData(new Uint8ClampedArray(data.buffer), w, h);
+  const imageData = new ImageData(new Uint8ClampedArray(data.buffer as ArrayBuffer), w, h);
   canvas.width = w;
   canvas.height = h;
   ctx.putImageData(imageData, 0, 0);

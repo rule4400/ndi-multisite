@@ -5,9 +5,14 @@ interface LocalVideoCellProps {
   siteName: string;
   focused: boolean;
   onClick: () => void;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
 }
 
-export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({ siteName, focused, onClick }) => {
+export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
+  siteName, focused, onClick, onDragStart, onDragOver, onDrop,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -54,17 +59,25 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({ siteName, focuse
   return (
     <div
       onClick={onClick}
-      className={`relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200 w-full h-full
+      draggable
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(); }}
+      onDragOver={e => { e.preventDefault(); onDragOver?.(e); }}
+      onDrop={e => { e.preventDefault(); onDrop?.(); }}
+      className={`group relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200 w-full h-full
         ${focused ? 'ring-2 ring-blue-400' : 'ring-2 ring-green-500/60 hover:ring-green-400'}`}
     >
-      {/* 映像エリア（グリッドセル全体を埋める） */}
-      <div className="absolute inset-0">
+      {/* 映像エリア：16:9 でレターボックス表示 */}
+      <div className="absolute inset-0 flex items-center justify-center bg-black">
         <video
           ref={videoRef}
           muted
           playsInline
-          className="w-full h-full object-cover"
-          style={{ display: ready && cameraEnabled ? 'block' : 'none', transform: 'scaleX(-1)' }}
+          className="w-full h-full"
+          style={{
+            objectFit: 'contain',
+            display: ready && cameraEnabled ? 'block' : 'none',
+            transform: 'scaleX(-1)',
+          }}
         />
         {ready && !cameraEnabled && (
           <div className="flex items-center justify-center w-full h-full text-white/40 text-sm">
@@ -84,7 +97,7 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({ siteName, focuse
       </div>
 
       {/* 左下：自拠点ラベル */}
-      <div className="absolute bottom-1 left-1">
+      <div className="absolute bottom-1 left-1 z-10">
         <div className="flex items-center gap-1 bg-green-600/80 text-white text-xs px-2 py-0.5 rounded">
           <div className="w-1.5 h-1.5 rounded-full bg-green-300 animate-pulse" />
           {siteName.slice(0, 8)}（自拠点）
@@ -92,12 +105,19 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({ siteName, focuse
       </div>
 
       {/* 右上：LIVEバッジ */}
-      <div className="absolute top-1 right-1 bg-black/60 text-white/60 text-xs px-1.5 py-0.5 rounded">
+      <div className="absolute top-1 right-1 z-10 bg-black/60 text-white/60 text-xs px-1.5 py-0.5 rounded">
         LIVE
       </div>
 
+      {/* フォーカス中バッジ */}
+      {focused && (
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 bg-blue-500/80 text-white text-xs px-2 py-0.5 rounded">
+          フォーカス中
+        </div>
+      )}
+
       {/* 右下：カメラ・マイクOFFインジケーター */}
-      <div className="absolute bottom-1 right-1 flex gap-1">
+      <div className="absolute bottom-1 right-1 z-10 flex gap-1">
         {!cameraEnabled && (
           <div className="flex items-center bg-black/70 text-red-400 px-1.5 py-0.5 rounded">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

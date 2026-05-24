@@ -10,6 +10,8 @@ export class NDISender {
   private width = 1280;
   private height = 720;
   private frameRate = 30;
+  private lastErrorLog = 0;          // エラースロットル用
+  private readonly ERROR_INTERVAL = 3000; // 3秒に1回だけログ出力
 
   async start(sourceName: string, resolution: string, fps: number): Promise<void> {
     this.frameRate = fps;
@@ -47,7 +49,8 @@ export class NDISender {
   private async sendFrame(): Promise<void> {
     if (!this.sender || !this.running) return;
     try {
-      const data = new Uint8Array(this.width * this.height * 4); // black BGRA
+      // ── 映像フレーム（黒画面 BGRA）──
+      const data = new Uint8Array(this.width * this.height * 4);
       await this.sender.video({
         xres: this.width,
         yres: this.height,
@@ -60,21 +63,26 @@ export class NDISender {
         lineStrideBytes: this.width * 4,
       });
 
+      // ── 音声フレーム（無音 planar float32）──
       const sampleRate = 48000;
       const samplesPerCh = Math.floor(sampleRate / this.frameRate);
       const channels = 2;
-      const silence = this.micEnabled
-        ? new Float32Array(samplesPerCh * channels)
-        : new Float32Array(samplesPerCh * channels);
+      const silence = new Float32Array(samplesPerCh * channels);
 
       await this.sender.audio({
         sampleRate,
         noChannels: channels,
         noSamples: samplesPerCh,
+        channelStrideBytes: samplesPerCh * 4,  // planar: bytes per channel
         data: Buffer.from(silence.buffer),
       });
     } catch (err) {
-      log.error('NDI send frame error:', err);
+      // 3秒に1回だけエラーログを出力（ログスパム防止）
+      const now = Date.now();
+      if (now - this.lastErrorLog >= this.ERROR_INTERVAL) {
+        log.error('NDI send frame error:', err);
+        this.lastErrorLog = now;
+      }
     }
   }
 }
