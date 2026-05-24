@@ -23,20 +23,18 @@ export const VideoCell: React.FC<VideoCellProps> = ({ site, streamState, focused
     <div
       ref={cellRef}
       onClick={onClick}
-      className={`relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200
+      className={`relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200 w-full h-full
         ${focused ? 'ring-2 ring-blue-400' : 'ring-1 ring-white/10 hover:ring-white/30'}`}
     >
-      {/* 映像エリア（16:9固定） */}
-      <div className="w-full" style={{ paddingBottom: '56.25%', position: 'relative' }}>
-        <div className="absolute inset-0">
-          {connected ? (
-            <VideoCanvas siteId={site.id} />
-          ) : (
-            <div className="flex items-center justify-center w-full h-full text-white/40 text-sm select-none">
-              接続待機中...
-            </div>
-          )}
-        </div>
+      {/* 映像エリア（グリッドセル全体を埋める） */}
+      <div className="absolute inset-0">
+        {connected ? (
+          <VideoCanvas siteId={site.id} />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full text-white/40 text-sm select-none">
+            接続待機中...
+          </div>
+        )}
       </div>
 
       {/* 左下：拠点名 */}

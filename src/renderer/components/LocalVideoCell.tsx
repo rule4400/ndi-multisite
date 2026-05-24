@@ -54,35 +54,33 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({ siteName, focuse
   return (
     <div
       onClick={onClick}
-      className={`relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200
+      className={`relative bg-black cursor-pointer overflow-hidden rounded transition-all duration-200 w-full h-full
         ${focused ? 'ring-2 ring-blue-400' : 'ring-2 ring-green-500/60 hover:ring-green-400'}`}
     >
-      {/* 16:9 映像エリア */}
-      <div className="w-full" style={{ paddingBottom: '56.25%', position: 'relative' }}>
-        <div className="absolute inset-0">
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-            style={{ display: ready && cameraEnabled ? 'block' : 'none', transform: 'scaleX(-1)' }}
-          />
-          {ready && !cameraEnabled && (
-            <div className="flex items-center justify-center w-full h-full text-white/40 text-sm">
-              カメラ OFF
-            </div>
-          )}
-          {error && (
-            <div className="flex items-center justify-center w-full h-full px-4">
-              <span className="text-red-400 text-xs text-center">{error}</span>
-            </div>
-          )}
-          {!ready && !error && (
-            <div className="flex items-center justify-center w-full h-full text-white/40 text-sm">
-              カメラ起動中...
-            </div>
-          )}
-        </div>
+      {/* 映像エリア（グリッドセル全体を埋める） */}
+      <div className="absolute inset-0">
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          style={{ display: ready && cameraEnabled ? 'block' : 'none', transform: 'scaleX(-1)' }}
+        />
+        {ready && !cameraEnabled && (
+          <div className="flex items-center justify-center w-full h-full text-white/40 text-sm">
+            カメラ OFF
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center justify-center w-full h-full px-4">
+            <span className="text-red-400 text-xs text-center">{error}</span>
+          </div>
+        )}
+        {!ready && !error && (
+          <div className="flex items-center justify-center w-full h-full text-white/40 text-sm">
+            カメラ起動中...
+          </div>
+        )}
       </div>
 
       {/* 左下：自拠点ラベル */}

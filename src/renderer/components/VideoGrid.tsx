@@ -156,7 +156,9 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
           style={{
             gridColumn: `1 / span ${mainColSpan}`,
             gridRow: `1 / span ${mainRowSpan}`,
+            minHeight: 0,
           }}
+          className="h-full"
         >
           {isLocal ? (
             <LocalVideoCell
@@ -181,9 +183,11 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
           return (
             <div
               key={item.id}
+              className="h-full"
               style={{
                 gridColumn: pos.col,
                 gridRow: pos.row,
+                minHeight: 0,
               }}
             >
               {item.isLocal ? (
