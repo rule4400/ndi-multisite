@@ -9,13 +9,15 @@
  *   グリッドはコンテナ中央に配置（余白は黒）。
  *
  * 【フォーカスモード】
- *   ┌──────────────────────┬──────┐
- *   │  MAIN  │  MAIN(opt) │ Sub  │  ← 固定 SUB_W×SUB_H (16:9)
- *   │ (16:9) │            │ Sub  │
- *   │        │            │ Sub  │
- *   └──────────────────────┴──────┘
- *   メインは残り幅を 16:9 で最大化。サブは右側に列で並ぶ。
- *   フォーカス 2 拠点は横並び（各 16:9）。
+ *   ┌──────┬──────┬──────┬──────┐
+ *   │ Sub  │ Sub  │ Sub  │ Sub  │ ← 上段サブ（メイン上の空き）
+ *   ├────────────────────┬──────┤
+ *   │ MAIN │ MAIN(opt)  │ Sub  │ ← 右列サブ（コンテナ全高）
+ *   ├────────────────────┤ Sub  │
+ *   │ Sub  │ Sub  │ Sub  │ Sub  │ ← 下段サブ（メイン下の空き）
+ *   └──────┴──────┴──────┴──────┘
+ *   上下の空きに可能な限りサブを配置し、右列で残りを表示。
+ *   すべてのセルが 16:9 固定サイズ。
  */
 
 import React, {
@@ -69,6 +71,99 @@ function calc16x9Cell(
 
 interface CellItem { id: string; isLocal: boolean; site?: Site; }
 interface CtxMenu  { x: number; y: number; id: string; isLocal: boolean; }
+interface SlotPos  { x: number; y: number; }
+
+/**
+ * フォーカスモードのレイアウトを計算する。
+ *
+ * 戦略:
+ *   1. 右列（rightColCount 本）でサブを収容しきれなければ列を増やす
+ *   2. メイン上下の空きスペース（上段・下段）にもサブを配置する
+ *   3. 右列 → 上段 → 下段 の優先順でスロットを割り当てる
+ */
+function computeFocusLayout(
+  cW: number, cH: number,
+  subCount: number, focusCount: number,
+): {
+  mainCellW: number; mainCellH: number; mainAreaW: number; mainY: number;
+  slots: SlotPos[];
+} {
+  if (cW <= 0 || cH <= 0) {
+    return { mainCellW: 0, mainCellH: 0, mainAreaW: 0, mainY: 0, slots: [] };
+  }
+
+  const subRowsPerRightCol = Math.max(1, Math.floor((cH + GAP) / (SUB_H + GAP)));
+
+  for (let rightCols = subCount > 0 ? 1 : 0; rightCols <= 8; rightCols++) {
+    // サブ右列の総幅
+    const rightAreaW = rightCols > 0 ? rightCols * (SUB_W + GAP) : 0;
+    const availW = Math.max(0, cW - rightAreaW);
+
+    // メインセルサイズ（16:9）
+    let mainCellW: number, mainCellH: number;
+    if (focusCount === 2) {
+      const eachW = (availW - GAP) / 2;
+      const eachH = eachW * 9 / 16;
+      if (eachH <= cH) { mainCellW = eachW; mainCellH = eachH; }
+      else { mainCellH = cH; mainCellW = mainCellH * 16 / 9; }
+    } else {
+      const h = availW * 9 / 16;
+      if (h <= cH) { mainCellW = availW; mainCellH = h; }
+      else { mainCellH = cH; mainCellW = mainCellH * 16 / 9; }
+    }
+    mainCellW = Math.max(0, mainCellW);
+    mainCellH = Math.max(0, mainCellH);
+
+    const mainAreaW = focusCount === 2 ? mainCellW * 2 + GAP : mainCellW;
+    const mainY = Math.round((cH - mainCellH) / 2);
+
+    // ── スロット生成 ──────────────────────────────
+    const slots: SlotPos[] = [];
+    const rightX = mainAreaW + GAP;
+
+    // ① 右列スロット（列優先・コンテナ全高）
+    for (let col = 0; col < rightCols; col++) {
+      for (let row = 0; row < subRowsPerRightCol; row++) {
+        slots.push({ x: rightX + col * (SUB_W + GAP), y: row * (SUB_H + GAP) });
+      }
+    }
+
+    // メイン上下の空きスペース
+    const topH      = mainY - GAP;
+    const topRows   = topH > 0 ? Math.floor((topH + GAP) / (SUB_H + GAP)) : 0;
+    const topCols   = mainAreaW > 0 ? Math.floor((mainAreaW + GAP) / (SUB_W + GAP)) : 0;
+    const botStartY = mainY + mainCellH + GAP;
+    const botH      = cH - botStartY;
+    const botRows   = botH > 0 ? Math.floor((botH + GAP) / (SUB_H + GAP)) : 0;
+
+    // ② 上段スロット（メインに近い行から優先）
+    if (topRows > 0 && topCols > 0) {
+      const topZoneH = topRows * SUB_H + (topRows - 1) * GAP;
+      const topStartY = mainY - GAP - topZoneH;
+      for (let row = 0; row < topRows; row++) {
+        for (let col = 0; col < topCols; col++) {
+          slots.push({ x: col * (SUB_W + GAP), y: topStartY + row * (SUB_H + GAP) });
+        }
+      }
+    }
+
+    // ③ 下段スロット
+    if (botRows > 0 && topCols > 0) {
+      for (let row = 0; row < botRows; row++) {
+        for (let col = 0; col < topCols; col++) {
+          slots.push({ x: col * (SUB_W + GAP), y: botStartY + row * (SUB_H + GAP) });
+        }
+      }
+    }
+
+    // 十分なスロットがあれば確定
+    if (slots.length >= subCount || rightCols >= 8) {
+      return { mainCellW, mainCellH, mainAreaW, mainY, slots };
+    }
+  }
+
+  return { mainCellW: 0, mainCellH: 0, mainAreaW: 0, mainY: 0, slots: [] };
+}
 
 // ════════════════════════════════════════════════════════
 export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) => {
@@ -290,71 +385,33 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // フォーカスモード
+  // フォーカスモード（絶対座標配置）
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (focusedIds.length > 0) {
     const focusedCells = focusedIds
       .map(id => orderedCells.find(c => c.id === id))
       .filter((x): x is CellItem => !!x);
     const subCells = orderedCells.filter(c => !focusedIds.includes(c.id));
-    const focusCount = focusedCells.length; // 1 or 2
+    const focusCount = focusedCells.length;
 
-    // サブセルが縦に何行入るか
-    const subRowsPerCol = Math.max(1, Math.floor((cH + GAP) / (SUB_H + GAP)));
-    const subColsNeeded = subCells.length > 0
-      ? Math.ceil(subCells.length / subRowsPerCol)
-      : 0;
-
-    // サブエリアの幅（サブがある場合のみ gap 含む）
-    const subAreaW = subColsNeeded > 0
-      ? subColsNeeded * SUB_W + (subColsNeeded - 1) * GAP + GAP  // +GAP = main との間
-      : 0;
-
-    // メインエリアの利用可能幅・高さ
-    const availW = Math.max(0, cW - subAreaW);
-    const availH = cH;
-
-    // メインセルの 16:9 サイズを計算
-    let mainCellW: number, mainCellH: number;
-    if (focusCount === 2) {
-      // 横並び 2 分割
-      const eachW = (availW - GAP) / 2;
-      const eachHbyW = eachW * 9 / 16;
-      if (eachHbyW <= availH) {
-        mainCellW = eachW;
-        mainCellH = eachHbyW;
-      } else {
-        mainCellH = availH;
-        mainCellW = mainCellH * 16 / 9;
-      }
-    } else {
-      // 1 セル
-      const hByW = availW * 9 / 16;
-      if (hByW <= availH) {
-        mainCellW = availW;
-        mainCellH = hByW;
-      } else {
-        mainCellH = availH;
-        mainCellW = mainCellH * 16 / 9;
-      }
-    }
-
-    // メインエリア全体の幅
-    const mainAreaW = focusCount === 2 ? mainCellW * 2 + GAP : mainCellW;
+    const { mainCellW, mainCellH, mainAreaW, mainY, slots } =
+      computeFocusLayout(cW, cH, subCells.length, focusCount);
 
     return (
       <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
         {hiddenPanel}
 
-        {/* ── 外側フレックス（メイン左 + サブ右）── */}
-        <div
-          className="w-full h-full flex items-center justify-start gap-1 p-0"
-          style={{ gap: GAP }}
-        >
-          {/* ── メインエリア ── */}
+        {/* ── メインセル（絶対配置）── */}
+        {mainCellW > 0 && focusedCells.map((cell, i) => (
           <div
-            className="flex-shrink-0 flex items-center justify-center"
-            style={{ width: mainAreaW, height: cH }}
+            key={cell.id}
+            style={{
+              position: 'absolute',
+              left: i * (mainCellW + GAP),
+              top: mainY,
+              width: mainCellW,
+              height: mainCellH,
+            }}
             onDragOver={e => e.preventDefault()}
             onDrop={e => {
               e.preventDefault();
@@ -367,50 +424,29 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
               }
             }}
           >
-            <div
-              className="flex items-center"
-              style={{
-                gap: GAP,
-                width: mainAreaW,
-                height: mainCellH,
-              }}
-            >
-              {focusedCells.map(cell => (
-                <div
-                  key={cell.id}
-                  style={{ width: mainCellW, height: mainCellH, flexShrink: 0 }}
-                >
-                  {renderCell(cell, 'main')}
-                </div>
-              ))}
-            </div>
+            {renderCell(cell, 'main')}
           </div>
+        ))}
 
-          {/* ── サブエリア（右側・列方向）── */}
-          {subColsNeeded > 0 && (
+        {/* ── サブセル（絶対配置・上下右を埋める）── */}
+        {subCells.map((cell, i) => {
+          const slot = slots[i];
+          if (!slot) return null;
+          return (
             <div
-              className="flex-shrink-0 self-center"
+              key={cell.id}
               style={{
-                display: 'grid',
-                gridTemplateRows: `repeat(${subRowsPerCol}, ${SUB_H}px)`,
-                gridAutoFlow: 'column',
-                gridAutoColumns: `${SUB_W}px`,
-                gap: GAP,
-                maxHeight: cH,
-                overflow: 'hidden',
+                position: 'absolute',
+                left: slot.x,
+                top: slot.y,
+                width: SUB_W,
+                height: SUB_H,
               }}
             >
-              {subCells.map(cell => (
-                <div
-                  key={cell.id}
-                  style={{ width: SUB_W, height: SUB_H }}
-                >
-                  {renderCell(cell, 'sub')}
-                </div>
-              ))}
+              {renderCell(cell, 'sub')}
             </div>
-          )}
-        </div>
+          );
+        })}
 
         {/* ── コンテキストメニュー ── */}
         {ctxMenu && (
