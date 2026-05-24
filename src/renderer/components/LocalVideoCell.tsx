@@ -40,10 +40,6 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
   const micEnabled       = useDeviceStore(s => s.micEnabled);
   const selectedCameraId = useDeviceStore(s => s.selectedCameraId);
   const selectedMicId    = useDeviceStore(s => s.selectedMicId);
-  const cameraDevices    = useDeviceStore(s => s.cameraDevices);
-  const micDevices       = useDeviceStore(s => s.micDevices);
-  const setSelectedCamera = useDeviceStore(s => s.setSelectedCamera);
-  const setSelectedMic    = useDeviceStore(s => s.setSelectedMic);
 
   // ── ストリーム起動 ──────────────────────────────────────
   const startStream = useCallback(async () => {
@@ -160,20 +156,6 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
     streamRef.current?.getAudioTracks().forEach(t => { t.enabled = micEnabled; });
   }, [micEnabled]);
 
-  // ── デバイスセレクタ UI ──────────────────────────────
-  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowDeviceMenu(false);
-      }
-    };
-    if (showDeviceMenu) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showDeviceMenu]);
-
   return (
     <div
       onClick={onClick}
@@ -233,80 +215,6 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
           フォーカス中
         </div>
       )}
-
-      {/* ── デバイス切替ボタン（ホバー時） ── */}
-      <div
-        className="absolute bottom-1 right-1 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
-        ref={menuRef}
-      >
-        <button
-          onClick={e => { e.stopPropagation(); setShowDeviceMenu(v => !v); }}
-          className="flex items-center gap-1 bg-black/70 hover:bg-black/90 text-white/70 hover:text-white text-xs px-2 py-1 rounded transition-colors"
-          title="カメラ・マイクを切替"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
-          </svg>
-          デバイス
-        </button>
-
-        {showDeviceMenu && (
-          <div
-            className="absolute bottom-full right-0 mb-1 w-64 bg-gray-900 border border-white/15
-              rounded-xl shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* カメラ選択 */}
-            <div className="px-3 py-2 border-b border-white/10">
-              <div className="text-xs text-white/40 mb-1.5">📷 カメラ</div>
-              {cameraDevices.length === 0 ? (
-                <div className="text-xs text-white/30">検出されていません</div>
-              ) : (
-                <div className="space-y-1">
-                  {cameraDevices.map(dev => (
-                    <button
-                      key={dev.deviceId}
-                      onClick={() => { setSelectedCamera(dev.deviceId); setShowDeviceMenu(false); }}
-                      className={`w-full text-left text-xs px-2 py-1.5 rounded transition-colors truncate
-                        ${selectedCameraId === dev.deviceId || (!selectedCameraId && dev.deviceId === cameraDevices[0]?.deviceId)
-                          ? 'bg-blue-600/30 text-blue-300'
-                          : 'text-white/60 hover:bg-white/10'}`}
-                    >
-                      {selectedCameraId === dev.deviceId || (!selectedCameraId && dev.deviceId === cameraDevices[0]?.deviceId)
-                        ? '✓ ' : '　'}{dev.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* マイク選択 */}
-            <div className="px-3 py-2">
-              <div className="text-xs text-white/40 mb-1.5">🎤 マイク</div>
-              {micDevices.length === 0 ? (
-                <div className="text-xs text-white/30">検出されていません</div>
-              ) : (
-                <div className="space-y-1">
-                  {micDevices.map(dev => (
-                    <button
-                      key={dev.deviceId}
-                      onClick={() => { setSelectedMic(dev.deviceId); setShowDeviceMenu(false); }}
-                      className={`w-full text-left text-xs px-2 py-1.5 rounded transition-colors truncate
-                        ${selectedMicId === dev.deviceId || (!selectedMicId && dev.deviceId === micDevices[0]?.deviceId)
-                          ? 'bg-blue-600/30 text-blue-300'
-                          : 'text-white/60 hover:bg-white/10'}`}
-                    >
-                      {selectedMicId === dev.deviceId || (!selectedMicId && dev.deviceId === micDevices[0]?.deviceId)
-                        ? '✓ ' : '　'}{dev.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── カメラ・マイクOFF インジケーター ── */}
       <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-10 flex gap-1">
