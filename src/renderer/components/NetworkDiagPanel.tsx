@@ -52,15 +52,16 @@ export const NetworkDiagPanel: React.FC<Props> = ({
       {/* 拠点リスト */}
       <div className="divide-y divide-white/5 max-h-96 overflow-y-auto">
         {sites.filter(s => s.enabled).map(site => {
-          const net    = networkStatuses.get(site.id);
-          const stream = streamMap.get(site.id);
+          const net         = networkStatuses.get(site.id);
+          const stream      = streamMap.get(site.id);
 
-          const netOk  = net?.reachable     ?? null;  // null = まだ不明
+          const netOk  = net?.reachable     ?? null;
           const ndiOk  = stream?.connected  ?? false;
           const vidOk  = stream?.hasVideo   ?? false;
           const audOk  = stream?.hasAudio   ?? false;
           const fps    = stream?.fps        ?? 0;
           const lat    = net?.latencyMs;
+          const errMsg = stream?.error;
 
           return (
             <div key={site.id} className="px-4 py-3">
@@ -109,16 +110,24 @@ export const NetworkDiagPanel: React.FC<Props> = ({
               )}
 
               {/* ヘルプメッセージ */}
-              {netOk === false && (
+              {errMsg?.includes('NDI SDK not available') ? (
+                <p className="mt-1.5 text-red-400/80 leading-relaxed">
+                  ⚠️ NDI Runtimeが未インストールです。<br />
+                  <a className="underline text-red-300">ndi.video</a> からインストールしてください。
+                </p>
+              ) : errMsg ? (
+                <p className="mt-1.5 text-red-400/80 leading-relaxed font-mono text-[10px]">
+                  {errMsg}
+                </p>
+              ) : netOk === false ? (
                 <p className="mt-1.5 text-red-400/80 leading-relaxed">
                   VPN接続を確認してください。IPアドレス設定ミスの可能性もあります。
                 </p>
-              )}
-              {netOk === true && !ndiOk && (
+              ) : netOk === true && !ndiOk ? (
                 <p className="mt-1.5 text-yellow-400/80 leading-relaxed">
                   対象拠点でアプリが起動しているか確認してください。
                 </p>
-              )}
+              ) : null}
             </div>
           );
         })}

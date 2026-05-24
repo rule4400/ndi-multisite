@@ -68,11 +68,12 @@ export interface DeviceState {
 }
 
 export interface StreamState {
-  siteId: string;
+  siteId:    string;
   connected: boolean;
-  hasVideo: boolean;
-  hasAudio: boolean;
-  fps: number;
+  hasVideo:  boolean;
+  hasAudio:  boolean;
+  fps:       number;
+  error?:    string;  // NDI SDKエラーメッセージ
 }
 
 /** PingManager が報告するネットワーク到達性 */

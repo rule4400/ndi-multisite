@@ -28,9 +28,10 @@ export const VideoCell: React.FC<VideoCellProps> = ({
   const cellRef = useRef<HTMLDivElement>(null);
   const showLabels = useConfigStore(s => s.config?.ui.showSiteLabels ?? true);
   const networkStatus = useNetworkStore(s => s.getStatus(site.id));
-  const connected = streamState?.connected ?? false;
-  const hasVideo  = streamState?.hasVideo  ?? false;
-  const hasAudio  = streamState?.hasAudio  ?? false;
+  const connected    = streamState?.connected ?? false;
+  const hasVideo     = streamState?.hasVideo  ?? false;
+  const hasAudio     = streamState?.hasAudio  ?? false;
+  const streamError  = streamState?.error;
   const netReachable = networkStatus?.reachable ?? false;
 
   return (
@@ -59,7 +60,11 @@ export const VideoCell: React.FC<VideoCellProps> = ({
             ) : (
               <>
                 {/* ネットワーク状態に応じたアイコン＋メッセージ */}
-                {networkStatus === undefined ? (
+                {streamError?.includes('NDI SDK not available') ? (
+                  <DiagDot color="red" label="NDI SDK未インストール" sub="NDI Runtimeが必要です" />
+                ) : streamError ? (
+                  <DiagDot color="red" label="NDIエラー" sub={streamError.slice(0, 40)} />
+                ) : networkStatus === undefined ? (
                   <DiagDot color="gray" label="確認中..." />
                 ) : netReachable ? (
                   <DiagDot color="yellow" label="NDI待機中" sub="アプリ起動を確認" />
