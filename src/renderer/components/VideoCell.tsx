@@ -1,9 +1,10 @@
 import React, { useRef } from 'react';
-import { Site, StreamState } from '../../shared/types';
+import { Site, StreamState, SiteNetworkStatus } from '../../shared/types';
 import { VideoCanvas } from './VideoCanvas';
 import { SiteLabel } from './SiteLabel';
 import { StatusIndicator } from './StatusIndicator';
 import { useConfigStore } from '../stores/useConfigStore';
+import { useNetworkStore } from '../stores/useNetworkStore';
 
 interface VideoCellProps {
   site: Site;
@@ -26,9 +27,11 @@ export const VideoCell: React.FC<VideoCellProps> = ({
 }) => {
   const cellRef = useRef<HTMLDivElement>(null);
   const showLabels = useConfigStore(s => s.config?.ui.showSiteLabels ?? true);
+  const networkStatus = useNetworkStore(s => s.getStatus(site.id));
   const connected = streamState?.connected ?? false;
   const hasVideo  = streamState?.hasVideo  ?? false;
   const hasAudio  = streamState?.hasAudio  ?? false;
+  const netReachable = networkStatus?.reachable ?? false;
 
   return (
     <div
@@ -50,15 +53,28 @@ export const VideoCell: React.FC<VideoCellProps> = ({
         {connected && !videoHidden ? (
           <VideoCanvas siteId={site.id} />
         ) : (
-          <div className="flex items-center justify-center w-full h-full text-white/40 text-sm select-none">
-            {videoHidden ? '映像オフ' : '接続待機中...'}
+          <div className="flex flex-col items-center justify-center w-full h-full gap-2 select-none">
+            {videoHidden ? (
+              <span className="text-white/40 text-sm">映像オフ</span>
+            ) : (
+              <>
+                {/* ネットワーク状態に応じたアイコン＋メッセージ */}
+                {networkStatus === undefined ? (
+                  <DiagDot color="gray" label="確認中..." />
+                ) : netReachable ? (
+                  <DiagDot color="yellow" label="NDI待機中" sub="アプリ起動を確認" />
+                ) : (
+                  <DiagDot color="red" label="VPN未接続" sub={site.vpnIp ? `${site.vpnIp} に到達不可` : 'VPN IPが未設定'} />
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
 
       {/* ── 右上：接続状態 ── */}
       <div className="absolute top-1 right-1 z-10">
-        <StatusIndicator state={streamState} />
+        <StatusIndicator state={streamState} network={networkStatus} />
       </div>
 
       {/* ── 左上：非表示ボタン（ホバー時） ── */}
@@ -121,6 +137,26 @@ export const VideoCell: React.FC<VideoCellProps> = ({
           フォーカス中
         </div>
       )}
+    </div>
+  );
+};
+
+// ── 診断ドット ─────────────────────────────────────────────
+
+const DiagDot: React.FC<{ color: 'red' | 'yellow' | 'gray'; label: string; sub?: string }> = ({ color, label, sub }) => {
+  const dotClass =
+    color === 'red'    ? 'bg-red-500' :
+    color === 'yellow' ? 'bg-yellow-400 animate-pulse' :
+    'bg-white/30 animate-pulse';
+  const textClass =
+    color === 'red'    ? 'text-red-400' :
+    color === 'yellow' ? 'text-yellow-300' :
+    'text-white/40';
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className={`w-3 h-3 rounded-full ${dotClass}`} />
+      <span className={`text-xs font-medium ${textClass}`}>{label}</span>
+      {sub && <span className="text-xs text-white/30">{sub}</span>}
     </div>
   );
 };

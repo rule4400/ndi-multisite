@@ -3,6 +3,7 @@ import log from 'electron-log';
 import { NDISender } from './ndiSender';
 import { NDIReceiver } from './ndiReceiver';
 import { DiscoveryManager } from './discoveryManager';
+import { pingManager } from '../network/pingManager';
 import { AppConfig, NDISource, StreamState, Site } from '../../shared/types';
 import { IPC } from '../../shared/ipcChannels';
 
@@ -33,6 +34,12 @@ export class NDIEngine {
 
     // VPN環境ではDiscoveryブロードキャストが届かないため、起動時に全有効拠点へ直接接続を試みる
     setTimeout(() => this.connectAllEnabledSites(), 3000);
+
+    // ネットワーク到達性チェック開始
+    pingManager.start(config.sites);
+    pingManager.onStatusChange((statuses) => {
+      this.window?.webContents.send(IPC.STREAM_NETWORK_STATUS, statuses);
+    });
   }
 
   /** 全有効拠点にVPN IPで直接接続（Discovery待ちなし） */
@@ -196,6 +203,7 @@ export class NDIEngine {
     }
     this.receivers.clear();
     this.discovery.stop();
+    pingManager.stop();
     log.info('NDI Engine shutdown complete');
   }
 }

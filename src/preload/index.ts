@@ -12,6 +12,7 @@ const IPC = {
   STREAM_PUSH_FRAME:     'stream:pushFrame',
   STREAM_PUSH_AUDIO:     'stream:pushAudio',
   STREAM_AUDIO_FRAME:    'stream:audioFrame',
+  STREAM_NETWORK_STATUS: 'stream:networkStatus',
   DEVICE_GET_CAMERAS:    'device:getCameras',
   UPDATE_CHECK:          'update:check',
   UPDATE_INSTALL:        'update:install',
@@ -155,6 +156,13 @@ const api = {
     const h = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.UPDATE_ERROR, h);
     return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, h);
+  },
+
+  // ネットワーク到達性ステータス（main → renderer）
+  onNetworkStatus: (cb: (statuses: import('../shared/types').SiteNetworkStatus[]) => void) => {
+    const h = (_: any, statuses: any) => cb(statuses);
+    ipcRenderer.on(IPC.STREAM_NETWORK_STATUS, h);
+    return () => ipcRenderer.removeListener(IPC.STREAM_NETWORK_STATUS, h);
   },
 
   // NDI受信音声（main → renderer）

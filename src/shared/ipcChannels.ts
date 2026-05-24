@@ -8,6 +8,7 @@ export const IPC = {
   STREAM_PUSH_FRAME:     'stream:pushFrame',      // renderer→main: video frame
   STREAM_PUSH_AUDIO:     'stream:pushAudio',      // renderer→main: audio chunk
   STREAM_AUDIO_FRAME:    'stream:audioFrame',     // main→renderer: NDI受信音声
+  STREAM_NETWORK_STATUS: 'stream:networkStatus',  // main→renderer: 拠点ネットワーク到達性
 
   DEVICE_GET_CAMERAS:    'device:getCameras',     // → MediaDeviceInfo[]
 

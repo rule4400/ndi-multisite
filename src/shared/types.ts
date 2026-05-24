@@ -75,6 +75,14 @@ export interface StreamState {
   fps: number;
 }
 
+/** PingManager が報告するネットワーク到達性 */
+export interface SiteNetworkStatus {
+  siteId:    string;
+  reachable: boolean;
+  latencyMs: number | null;
+  checkedAt: number;
+}
+
 export interface MonitorInfo {
   index: number;
   label: string;
