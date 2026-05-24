@@ -22,6 +22,20 @@ jobs:
           node-version: 20
           cache: npm
 
+      # タグ (v1.2.3) から "1.2.3" を取り出して package.json に書き込む
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "Setting version to $TAG"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version = '$TAG';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cat package.json | grep '"version"'
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -68,6 +82,21 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      # タグ (v1.2.3) から "1.2.3" を取り出して package.json に書き込む
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "Setting version to $TAG"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version = '$TAG';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cat package.json | grep '"version"'
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5

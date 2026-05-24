@@ -1,6 +1,6 @@
 {
   "name": "ndi-multisite",
-  "version": "1.0.0",
+  "version": "1.6.0",
   "description": "13拠点 常時接続 映像音声共有アプリケーション",
   "author": "Your Organization",
   "main": "dist/main/index.js",
@@ -12,7 +12,8 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "release": "node scripts/release.js"
   },
   "dependencies": {
     "@stagetimerio/grandiose": "^0.2.0",
