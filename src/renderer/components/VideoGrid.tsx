@@ -42,14 +42,48 @@ const SUB_W     = 192;  // サブセル幅 (px)  ← 16:9
 const SUB_H     = 108;  // サブセル高 (px)  ← 16:9  (192*9/16=108)
 const MAX_FOCUS = 2;    // フォーカス最大数
 
-// 通常グリッドの列・行数
-function calcGrid(n: number): { cols: number; rows: number } {
-  if (n <= 1)  return { cols: 1, rows: 1 };
-  if (n <= 4)  return { cols: 2, rows: 2 };
-  if (n <= 6)  return { cols: 3, rows: 2 };
-  if (n <= 9)  return { cols: 3, rows: 3 };
-  if (n <= 12) return { cols: 4, rows: 3 };
-  return { cols: 4, rows: 4 };
+/**
+ * 通常グリッドの最適な列・行数を求める。
+ *
+ * コンテナサイズを考慮し、16:9 セルが最もコンテナを埋める
+ * (gridW × gridH) / (cW × cH) が最大になる cols × rows を選ぶ。
+ * 手動レイアウト指定時は呼ばれない。
+ */
+function findBestGrid(
+  n: number, cW: number, cH: number,
+): { cols: number; rows: number } {
+  if (n <= 0 || cW <= 0 || cH <= 0) return { cols: 1, rows: 1 };
+  if (n === 1) return { cols: 1, rows: 1 };
+
+  let bestCols = 1, bestRows = n, bestCoverage = -1;
+
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    // セルサイズを計算（ギャップ込み）
+    const totalGapW = GAP * (cols - 1);
+    const totalGapH = GAP * (rows - 1);
+    const cellWbyW = (cW - totalGapW) / cols;
+    const cellHbyW = cellWbyW * 9 / 16;
+    let cellW: number, cellH: number;
+    if (cellHbyW * rows + totalGapH <= cH) {
+      cellW = cellWbyW; cellH = cellHbyW;       // 横幅基準
+    } else {
+      cellH = (cH - totalGapH) / rows;
+      cellW = cellH * 16 / 9;                   // 縦幅基準
+    }
+    if (cellW <= 0 || cellH <= 0) continue;
+
+    const gridW    = cellW * cols + totalGapW;
+    const gridH    = cellH * rows + totalGapH;
+    const coverage = (gridW * gridH) / (cW * cH);
+
+    if (coverage > bestCoverage) {
+      bestCoverage = coverage;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+  return { cols: bestCols, rows: bestRows };
 }
 
 // 16:9 セルサイズを計算（コンテナに収まる最大サイズ）
@@ -469,7 +503,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
     const parts = gridLayout.split('x').map(Number);
     cols = parts[0]; rows = parts[1];
   } else {
-    ({ cols, rows } = calcGrid(totalCount));
+    // ウィンドウサイズに応じて最適な cols×rows を自動選択
+    ({ cols, rows } = findBestGrid(totalCount, cW, cH));
   }
 
   const { cellW, cellH } = calc16x9Cell(cW, cH, cols, rows);
