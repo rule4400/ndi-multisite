@@ -40,10 +40,9 @@ jobs:
         run: npx electron-rebuild -f -w keytar
         continue-on-error: true
 
+      # GH_TOKEN を渡さない → electron-builder はビルドのみ・publishしない
       - name: Build & Package (macOS)
-        run: npm run dist:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:mac -- --publish never
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -94,10 +93,9 @@ jobs:
           npm_config_msvs_version: "2022"
           GYP_MSVS_VERSION: "2022"
 
+      # GH_TOKEN を渡さない → electron-builder はビルドのみ・publishしない
       - name: Build & Package (Windows)
-        run: npm run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:win -- --publish never
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
