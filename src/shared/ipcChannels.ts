@@ -2,6 +2,9 @@ export const IPC = {
   STREAM_VIDEO_FRAME:    'stream:videoFrame',
   STREAM_SOURCE_LIST:    'stream:sourceList',
   STREAM_STATUS_UPDATE:  'stream:statusUpdate',
+  STREAM_CONNECT_SITE:   'stream:connectSite',    // siteId, sourceName?
+  STREAM_DISCONNECT_SITE:'stream:disconnectSite', // siteId
+  STREAM_GET_SOURCES:    'stream:getSources',     // → NDISource[]
 
   CTRL_SET_CAMERA:       'control:setCamera',
   CTRL_SET_MIC:          'control:setMic',

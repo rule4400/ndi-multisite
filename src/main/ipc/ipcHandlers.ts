@@ -113,7 +113,26 @@ export function setupIpcHandlers(window: BrowserWindow): void {
     return ndiEngine.getSources();
   });
 
+  ipcMain.handle(IPC.STREAM_GET_SOURCES, () => {
+    return ndiEngine.getSources();
+  });
+
   ipcMain.handle(IPC.STREAM_STATUS_UPDATE, () => {
     return ndiEngine.getStreamStatuses();
+  });
+
+  ipcMain.handle(IPC.STREAM_CONNECT_SITE, async (_e, siteId: string, sourceName?: string) => {
+    const config = configManager.get();
+    const site = config.sites.find(s => s.id === siteId);
+    if (!site) return;
+    if (sourceName) {
+      await ndiEngine.switchSiteSource(siteId, sourceName);
+    } else {
+      await ndiEngine.connectToSite(site);
+    }
+  });
+
+  ipcMain.handle(IPC.STREAM_DISCONNECT_SITE, (_e, siteId: string) => {
+    ndiEngine.disconnectSite(siteId);
   });
 }

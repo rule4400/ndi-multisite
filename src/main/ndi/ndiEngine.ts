@@ -64,14 +64,35 @@ export class NDIEngine {
     this.sender.setAudioEnabled(enabled);
   }
 
+  /** NDIソース名、またはVPN IPアドレスでサイトを自動マッチ */
   private tryAutoConnect(source: NDISource): void {
     if (!this.config) return;
-    const matchedSite = this.config.sites.find(
-      s => s.enabled && s.ndiSourceName === source.name
-    );
+    const matchedSite = this.config.sites.find(s => {
+      if (!s.enabled) return false;
+      // 既に接続済みのサイトはスキップ
+      if (this.receivers.has(s.id)) return false;
+      // 1) NDIソース名が明示指定されている場合は名前でマッチ
+      if (s.ndiSourceName && s.ndiSourceName.trim()) {
+        return s.ndiSourceName === source.name;
+      }
+      // 2) NDIソース名が未指定の場合はVPN IPアドレスでマッチ
+      if (s.vpnIp && s.vpnIp.trim()) {
+        return source.urlAddress?.includes(s.vpnIp) ?? false;
+      }
+      return false;
+    });
     if (matchedSite) {
       this.connectToSite(matchedSite, source);
     }
+  }
+
+  /** 指定サイトに特定のNDIソース名で接続（UI からの切替に使用） */
+  async switchSiteSource(siteId: string, sourceName: string): Promise<void> {
+    if (!this.config) return;
+    const site = this.config.sites.find(s => s.id === siteId);
+    if (!site) return;
+    const source = this.discovery.getSources().find(s => s.name === sourceName);
+    await this.connectToSite(site, source ?? { name: sourceName, urlAddress: `${site.vpnIp}:5960` });
   }
 
   async connectToSite(site: Site, source?: NDISource): Promise<void> {
@@ -79,10 +100,20 @@ export class NDIEngine {
       this.receivers.get(site.id)?.disconnect();
     }
 
-    const ndiSource: NDISource = source ?? {
-      name: site.ndiSourceName,
-      urlAddress: `${site.vpnIp}:5960`,
-    };
+    // sourceが未指定 → NDIソース名またはIPで探す
+    let ndiSource: NDISource;
+    if (source) {
+      ndiSource = source;
+    } else if (site.ndiSourceName?.trim()) {
+      const found = this.discovery.getSources().find(s => s.name === site.ndiSourceName);
+      ndiSource = found ?? { name: site.ndiSourceName, urlAddress: `${site.vpnIp}:5960` };
+    } else if (site.vpnIp?.trim()) {
+      const found = this.discovery.getSources().find(s => s.urlAddress?.includes(site.vpnIp));
+      ndiSource = found ?? { name: `${site.name}-NDI`, urlAddress: `${site.vpnIp}:5960` };
+    } else {
+      log.warn(`connectToSite: site ${site.name} has no NDI source name or VPN IP`);
+      return;
+    }
 
     const receiver = new NDIReceiver();
     this.receivers.set(site.id, receiver);

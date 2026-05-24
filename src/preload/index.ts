@@ -6,6 +6,9 @@ const IPC = {
   STREAM_VIDEO_FRAME:    'stream:videoFrame',
   STREAM_SOURCE_LIST:    'stream:sourceList',
   STREAM_STATUS_UPDATE:  'stream:statusUpdate',
+  STREAM_CONNECT_SITE:   'stream:connectSite',
+  STREAM_DISCONNECT_SITE:'stream:disconnectSite',
+  STREAM_GET_SOURCES:    'stream:getSources',
   CTRL_SET_CAMERA:       'control:setCamera',
   CTRL_SET_MIC:          'control:setMic',
   CTRL_SET_SPEAKER:      'control:setSpeaker',
@@ -83,6 +86,14 @@ const api = {
     ipcRenderer.on(IPC.STREAM_STATUS_UPDATE, handler);
     return () => ipcRenderer.removeListener(IPC.STREAM_STATUS_UPDATE, handler);
   },
+
+  // Stream control
+  getSources: (): Promise<NDISource[]> =>
+    ipcRenderer.invoke(IPC.STREAM_GET_SOURCES),
+  connectSite: (siteId: string, sourceName?: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.STREAM_CONNECT_SITE, siteId, sourceName),
+  disconnectSite: (siteId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.STREAM_DISCONNECT_SITE, siteId),
 
   // Sync
   syncNow: (): Promise<{ success: boolean; message: string }> =>
