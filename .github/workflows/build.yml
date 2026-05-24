@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ══════════════════════════════════════════════
+  # macOS ビルド
+  # ══════════════════════════════════════════════
   build-mac:
     name: Build macOS
     runs-on: macos-latest
@@ -19,16 +22,23 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Python (distutils対応)
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install setuptools (distutils補完)
+      - name: Install setuptools
         run: pip install setuptools
 
-      - name: Install dependencies
-        run: npm ci
+      # postinstall (electron-builder install-app-deps) をスキップして
+      # grandiose の NDI SDK 依存コンパイルエラーを回避
+      - name: Install dependencies (skip native compile)
+        run: npm ci --ignore-scripts
+
+      # keytar は認証に必要 → Electron 向けに再ビルド（prebuilt あり）
+      - name: Rebuild keytar for Electron
+        run: npx electron-rebuild -f -w keytar
+        continue-on-error: true
 
       - name: Build & Package (macOS)
         run: npm run dist:mac
@@ -44,6 +54,9 @@ jobs:
             release/*.zip
           retention-days: 30
 
+  # ══════════════════════════════════════════════
+  # Windows ビルド
+  # ══════════════════════════════════════════════
   build-win:
     name: Build Windows
     runs-on: windows-latest
@@ -56,19 +69,30 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Python (distutils対応)
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install setuptools (distutils補完)
+      - name: Install setuptools
         run: pip install setuptools
 
       - name: Install Visual Studio Build Tools
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install dependencies
-        run: npm ci
+      # postinstall をスキップして grandiose のコンパイルエラーを回避
+      - name: Install dependencies (skip native compile)
+        run: npm ci --ignore-scripts
+        env:
+          npm_config_msvs_version: "2022"
+
+      # keytar を Electron 向けに再ビルド
+      - name: Rebuild keytar for Electron
+        run: npx electron-rebuild -f -w keytar
+        continue-on-error: true
+        env:
+          npm_config_msvs_version: "2022"
+          GYP_MSVS_VERSION: "2022"
 
       - name: Build & Package (Windows)
         run: npm run dist:win
@@ -83,6 +107,9 @@ jobs:
             release/*.exe
           retention-days: 30
 
+  # ══════════════════════════════════════════════
+  # GitHub Release 作成
+  # ══════════════════════════════════════════════
   release:
     name: Create GitHub Release
     needs: [build-mac, build-win]
