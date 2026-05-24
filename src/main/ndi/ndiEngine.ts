@@ -139,6 +139,16 @@ export class NDIEngine {
     this.broadcastStatus();
   }
 
+  /** renderer から受け取ったカメラフレームを NDI Sender に転送 */
+  pushVideoFrame(data: Uint8Array, width: number, height: number): void {
+    this.sender.pushVideoFrame(data, width, height);
+  }
+
+  /** renderer から受け取ったマイク音声を NDI Sender に転送 */
+  pushAudioChunk(data: Float32Array, sampleRate: number, channels: number): void {
+    this.sender.pushAudioChunk(data, sampleRate, channels);
+  }
+
   disconnectSite(siteId: string): void {
     this.receivers.get(siteId)?.disconnect();
     this.receivers.delete(siteId);

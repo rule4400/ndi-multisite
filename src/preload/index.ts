@@ -9,6 +9,9 @@ const IPC = {
   STREAM_CONNECT_SITE:   'stream:connectSite',
   STREAM_DISCONNECT_SITE:'stream:disconnectSite',
   STREAM_GET_SOURCES:    'stream:getSources',
+  STREAM_PUSH_FRAME:     'stream:pushFrame',
+  STREAM_PUSH_AUDIO:     'stream:pushAudio',
+  DEVICE_GET_CAMERAS:    'device:getCameras',
   CTRL_SET_CAMERA:       'control:setCamera',
   CTRL_SET_MIC:          'control:setMic',
   CTRL_SET_SPEAKER:      'control:setSpeaker',
@@ -94,6 +97,14 @@ const api = {
     ipcRenderer.invoke(IPC.STREAM_CONNECT_SITE, siteId, sourceName),
   disconnectSite: (siteId: string): Promise<void> =>
     ipcRenderer.invoke(IPC.STREAM_DISCONNECT_SITE, siteId),
+
+  // カメラ映像フレーム送信（renderer → main → NDI）
+  sendVideoFrame: (data: Uint8Array, width: number, height: number): void =>
+    ipcRenderer.send(IPC.STREAM_PUSH_FRAME, data, width, height),
+
+  // マイク音声送信（renderer → main → NDI）
+  sendAudioChunk: (data: Float32Array, sampleRate: number, channels: number): void =>
+    ipcRenderer.send(IPC.STREAM_PUSH_AUDIO, data, sampleRate, channels),
 
   // Sync
   syncNow: (): Promise<{ success: boolean; message: string }> =>

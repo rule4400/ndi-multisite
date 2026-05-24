@@ -5,6 +5,10 @@ export const IPC = {
   STREAM_CONNECT_SITE:   'stream:connectSite',    // siteId, sourceName?
   STREAM_DISCONNECT_SITE:'stream:disconnectSite', // siteId
   STREAM_GET_SOURCES:    'stream:getSources',     // → NDISource[]
+  STREAM_PUSH_FRAME:     'stream:pushFrame',      // renderer→main: video frame
+  STREAM_PUSH_AUDIO:     'stream:pushAudio',      // renderer→main: audio chunk
+
+  DEVICE_GET_CAMERAS:    'device:getCameras',     // → MediaDeviceInfo[]
 
   CTRL_SET_CAMERA:       'control:setCamera',
   CTRL_SET_MIC:          'control:setMic',

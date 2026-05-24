@@ -135,4 +135,14 @@ export function setupIpcHandlers(window: BrowserWindow): void {
   ipcMain.handle(IPC.STREAM_DISCONNECT_SITE, (_e, siteId: string) => {
     ndiEngine.disconnectSite(siteId);
   });
+
+  // renderer → main: カメラ映像フレーム（RGBA Uint8Array）
+  ipcMain.on(IPC.STREAM_PUSH_FRAME, (_e, data: Uint8Array, width: number, height: number) => {
+    ndiEngine.pushVideoFrame(data, width, height);
+  });
+
+  // renderer → main: マイク音声（インターリーブ Float32Array）
+  ipcMain.on(IPC.STREAM_PUSH_AUDIO, (_e, data: Float32Array, sampleRate: number, channels: number) => {
+    ndiEngine.pushAudioChunk(data, sampleRate, channels);
+  });
 }
