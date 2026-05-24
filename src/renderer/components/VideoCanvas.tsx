@@ -80,7 +80,9 @@ function initWebGL(gl: WebGLRenderingContext): { program: WebGLProgram; texture:
     uniform sampler2D u_tex;
     varying vec2 v_uv;
     void main() {
-      gl_FragColor = texture2D(u_tex, v_uv);
+      vec4 c = texture2D(u_tex, v_uv);
+      // NDI receiver outputs BGRA; WebGL uploads as RGBA → swap R and B
+      gl_FragColor = vec4(c.b, c.g, c.r, c.a);
     }
   `;
 
@@ -140,7 +142,15 @@ function renderWebGL(gl: WebGLRenderingContext, data: Uint8Array, w: number, h: 
 function render2D(canvas: HTMLCanvasElement, data: Uint8Array, w: number, h: number): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  const imageData = new ImageData(new Uint8ClampedArray(data.buffer as ArrayBuffer), w, h);
+  // NDI receiver outputs BGRA; swap R and B for canvas (RGBA)
+  const rgba = new Uint8ClampedArray(data.length);
+  for (let i = 0; i < data.length; i += 4) {
+    rgba[i]     = data[i + 2]; // R ← B
+    rgba[i + 1] = data[i + 1]; // G
+    rgba[i + 2] = data[i];     // B ← R
+    rgba[i + 3] = data[i + 3]; // A
+  }
+  const imageData = new ImageData(rgba, w, h);
   canvas.width = w;
   canvas.height = h;
   ctx.putImageData(imageData, 0, 0);

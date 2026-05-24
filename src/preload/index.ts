@@ -11,6 +11,7 @@ const IPC = {
   STREAM_GET_SOURCES:    'stream:getSources',
   STREAM_PUSH_FRAME:     'stream:pushFrame',
   STREAM_PUSH_AUDIO:     'stream:pushAudio',
+  STREAM_AUDIO_FRAME:    'stream:audioFrame',
   DEVICE_GET_CAMERAS:    'device:getCameras',
   UPDATE_CHECK:          'update:check',
   UPDATE_INSTALL:        'update:install',
@@ -154,6 +155,13 @@ const api = {
     const h = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.UPDATE_ERROR, h);
     return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, h);
+  },
+
+  // NDI受信音声（main → renderer）
+  onAudioFrame: (cb: (frame: { siteId: string; data: number[]; sampleRate: number; channels: number }) => void) => {
+    const h = (_: any, frame: any) => cb(frame);
+    ipcRenderer.on(IPC.STREAM_AUDIO_FRAME, h);
+    return () => ipcRenderer.removeListener(IPC.STREAM_AUDIO_FRAME, h);
   },
 
   onConfigUpdate: (callback: (config: AppConfig) => void) => {

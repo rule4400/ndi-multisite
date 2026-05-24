@@ -7,6 +7,8 @@ import { useStreamStore } from '../stores/useStreamStore';
 import { useConfigStore } from '../stores/useConfigStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useDeviceStore } from '../stores/useDeviceStore';
+import { audioPlayer } from '../audio/AudioPlayer';
+import { api } from '../bridge/api';
 
 export const MainView: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
@@ -21,8 +23,27 @@ export const MainView: React.FC = () => {
     initConfig();
     initStream();
     initDevice();
+
+    // AudioPlayer初期化 + NDI受信音声をリアルタイム再生
+    audioPlayer.initialize();
+    const unsubAudio = (api as any).onAudioFrame?.((frame: { siteId: string; data: number[]; sampleRate: number; channels: number }) => {
+      audioPlayer.resume(); // ユーザー操作後のAutoplay policy対策
+      audioPlayer.playChunk(frame.siteId, frame);
+    });
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // マスター音量をAudioPlayerに反映
+  const { masterVolume, siteVolumes } = useDeviceStore();
+  useEffect(() => {
+    audioPlayer.setMasterVolume(masterVolume);
+  }, [masterVolume]);
+  useEffect(() => {
+    Object.entries(siteVolumes).forEach(([siteId, vol]) => {
+      audioPlayer.setSiteVolume(siteId, vol);
+    });
+  }, [siteVolumes]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

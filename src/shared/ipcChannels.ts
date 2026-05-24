@@ -7,6 +7,7 @@ export const IPC = {
   STREAM_GET_SOURCES:    'stream:getSources',     // → NDISource[]
   STREAM_PUSH_FRAME:     'stream:pushFrame',      // renderer→main: video frame
   STREAM_PUSH_AUDIO:     'stream:pushAudio',      // renderer→main: audio chunk
+  STREAM_AUDIO_FRAME:    'stream:audioFrame',     // main→renderer: NDI受信音声
 
   DEVICE_GET_CAMERAS:    'device:getCameras',     // → MediaDeviceInfo[]
 

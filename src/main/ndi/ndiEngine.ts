@@ -30,6 +30,21 @@ export class NDIEngine {
       log.info('NDI Source removed:', source.name);
       this.window?.webContents.send(IPC.STREAM_SOURCE_LIST, this.discovery.getSources());
     });
+
+    // VPN環境ではDiscoveryブロードキャストが届かないため、起動時に全有効拠点へ直接接続を試みる
+    setTimeout(() => this.connectAllEnabledSites(), 3000);
+  }
+
+  /** 全有効拠点にVPN IPで直接接続（Discovery待ちなし） */
+  private async connectAllEnabledSites(): Promise<void> {
+    if (!this.config) return;
+    for (const site of this.config.sites) {
+      if (!site.enabled) continue;
+      if (this.receivers.has(site.id)) continue; // 既に接続済み
+      if (!site.vpnIp?.trim() && !site.ndiSourceName?.trim()) continue;
+      log.info(`Auto-connecting to site ${site.name} on startup`);
+      await this.connectToSite(site).catch(e => log.warn(`Auto-connect failed for ${site.name}:`, e));
+    }
   }
 
   setWindow(window: BrowserWindow): void {
@@ -131,8 +146,14 @@ export class NDIEngine {
           timestamp: Date.now(),
         });
       },
-      (_samples, _sampleRate, _channels) => {
-        // Audio handled by AudioEngine
+      (samples, sampleRate, channels) => {
+        if (!this.window) return;
+        this.window.webContents.send(IPC.STREAM_AUDIO_FRAME, {
+          siteId: site.id,
+          data: Array.from(samples), // Float32Array → plain array for IPC serialization
+          sampleRate,
+          channels,
+        });
       },
     );
 
