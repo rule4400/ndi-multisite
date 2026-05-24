@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VideoGrid } from '../components/VideoGrid';
 import { ControlPanel } from '../components/ControlPanel';
 import { SettingsView } from './SettingsView';
-import { UpdateBanner } from '../components/UpdateBanner';
+import { UpdateDialog } from '../components/UpdateDialog';
 import { NetworkDiagPanel } from '../components/NetworkDiagPanel';
 import { useStreamStore } from '../stores/useStreamStore';
 import { useConfigStore } from '../stores/useConfigStore';
@@ -128,7 +128,8 @@ export const MainView: React.FC = () => {
         <ControlPanel />
       </div>
 
-      <UpdateBanner />
+      {/* 起動時アップデートダイアログ（自動チェックモード） */}
+      <UpdateDialog autoMode={true} />
 
       {/* 接続診断パネル */}
       {showDiag && (

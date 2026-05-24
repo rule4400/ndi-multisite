@@ -179,6 +179,10 @@ const api = {
   },
 };
 
-contextBridge.exposeInMainWorld('electronAPI', api);
+// バージョン情報（package.jsonから）
+contextBridge.exposeInMainWorld('electronAPI', {
+  ...api,
+  version: process.env.npm_package_version ?? require('../../package.json').version,
+});
 
 export type ElectronAPI = typeof api;

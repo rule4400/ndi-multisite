@@ -4,12 +4,13 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useStreamStore } from '../stores/useStreamStore';
 import { Site, MonitorInfo, UserRole, NDISource } from '../../shared/types';
 import { api } from '../bridge/api';
+import { UpdateDialog } from '../components/UpdateDialog';
 
 interface Props {
   onClose: () => void;
 }
 
-type Tab = 'sites' | 'network' | 'video' | 'display' | 'account' | 'sync';
+type Tab = 'sites' | 'network' | 'video' | 'display' | 'account' | 'sync' | 'update';
 
 // ── タブ定義 ──────────────────────────────────────────────
 const TAB_LABELS: Record<Tab, { icon: string; label: string }> = {
@@ -19,6 +20,7 @@ const TAB_LABELS: Record<Tab, { icon: string; label: string }> = {
   display: { icon: '🖥️', label: '表示設定' },
   account: { icon: '🔑', label: 'アカウント' },
   sync:    { icon: '🔄', label: '設定同期' },
+  update:  { icon: '⬆️', label: 'アップデート' },
 };
 
 // ════════════════════════════════════════════════════════
@@ -28,8 +30,8 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<Tab>('sites');
 
   const visibleTabs: Tab[] = isFull
-    ? ['sites', 'network', 'video', 'display', 'account', 'sync']
-    : ['sites', 'network', 'video', 'display'];
+    ? ['sites', 'network', 'video', 'display', 'account', 'sync', 'update']
+    : ['sites', 'network', 'video', 'display', 'update'];
 
   // Esc キーで閉じる
   useEffect(() => {
@@ -87,6 +89,7 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
           {activeTab === 'display' && <DisplayTab />}
           {activeTab === 'account' && isFull && <AccountTab />}
           {activeTab === 'sync'    && isFull && <SyncTab />}
+          {activeTab === 'update'  && <UpdateTab />}
         </main>
       </div>
     </div>
@@ -798,3 +801,84 @@ const Toggle: React.FC<{ label: string; checked: boolean; onChange: (v: boolean)
     </div>
   </label>
 );
+
+// ════════════════════════════════════════════════════════
+// アップデートタブ
+// ════════════════════════════════════════════════════════
+const UpdateTab: React.FC = () => {
+  const [checking, setChecking]     = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
+  const [lastCheck, setLastCheck]   = useState<Date | null>(null);
+
+  const handleCheck = async () => {
+    setChecking(true);
+    setShowDialog(true);
+    setLastCheck(new Date());
+    try {
+      await api.checkForUpdates();
+    } catch {
+      // エラーはUpdateDialog側で表示
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="アップデート"
+        description="アプリの更新を確認・適用します。起動時に自動的に確認されます。"
+      />
+
+      {/* 現在のバージョン */}
+      <div className="bg-white/5 rounded-lg p-4 space-y-1">
+        <p className="text-xs text-white/40">現在のバージョン</p>
+        <p className="text-white font-semibold text-lg">
+          {(window as any).electronAPI?.version ?? '取得中...'}
+        </p>
+        {lastCheck && (
+          <p className="text-xs text-white/30">
+            最終確認: {lastCheck.toLocaleTimeString('ja-JP')}
+          </p>
+        )}
+      </div>
+
+      {/* 手動チェックボタン */}
+      <button
+        onClick={handleCheck}
+        disabled={checking}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500
+          disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+      >
+        {checking ? (
+          <>
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            確認中...
+          </>
+        ) : (
+          <>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+            </svg>
+            アップデートを確認
+          </>
+        )}
+      </button>
+
+      {/* 説明 */}
+      <div className="border border-white/10 rounded-lg p-4 text-xs text-white/40 space-y-1.5">
+        <p className="text-white/60 font-medium mb-2">アップデートの流れ</p>
+        <p>1. 起動時に自動でGitHubを確認します</p>
+        <p>2. 新バージョンがある場合はダイアログが表示されます</p>
+        <p>3. バックグラウンドでダウンロードが完了したら再起動を促します</p>
+        <p>4. 「後で」を選択した場合は次回起動時に再度確認します</p>
+      </div>
+
+      {/* 手動チェック時のダイアログ */}
+      {showDialog && (
+        <UpdateDialog autoMode={false} onClose={() => setShowDialog(false)} />
+      )}
+    </div>
+  );
+};
