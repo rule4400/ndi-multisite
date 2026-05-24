@@ -11,8 +11,10 @@ const IPC = {
   STREAM_GET_SOURCES:    'stream:getSources',
   STREAM_PUSH_FRAME:     'stream:pushFrame',
   STREAM_PUSH_AUDIO:     'stream:pushAudio',
-  STREAM_AUDIO_FRAME:    'stream:audioFrame',
-  STREAM_NETWORK_STATUS: 'stream:networkStatus',
+  STREAM_AUDIO_FRAME:        'stream:audioFrame',
+  STREAM_NETWORK_STATUS:     'stream:networkStatus',
+  SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',
+  SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',
   DEVICE_GET_CAMERAS:    'device:getCameras',
   UPDATE_CHECK:          'update:check',
   UPDATE_INSTALL:        'update:install',
@@ -156,6 +158,17 @@ const api = {
     const h = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.UPDATE_ERROR, h);
     return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, h);
+  },
+
+  // システム設定
+  configureFirewall: (): Promise<any> =>
+    ipcRenderer.invoke(IPC.SYSTEM_CONFIGURE_FIREWALL),
+  getFirewallStatus: (): Promise<{ configured: boolean; platform: string }> =>
+    ipcRenderer.invoke(IPC.SYSTEM_FIREWALL_STATUS),
+  onFirewallStatus: (cb: (result: any) => void) => {
+    const h = (_: any, result: any) => cb(result);
+    ipcRenderer.on(IPC.SYSTEM_FIREWALL_STATUS, h);
+    return () => ipcRenderer.removeListener(IPC.SYSTEM_FIREWALL_STATUS, h);
   },
 
   // ネットワーク到達性ステータス（main → renderer）

@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = 'sites' | 'network' | 'video' | 'display' | 'account' | 'sync' | 'update';
+type Tab = 'sites' | 'network' | 'video' | 'display' | 'account' | 'sync' | 'update' | 'system';
 
 // ── タブ定義 ──────────────────────────────────────────────
 const TAB_LABELS: Record<Tab, { icon: string; label: string }> = {
@@ -21,6 +21,7 @@ const TAB_LABELS: Record<Tab, { icon: string; label: string }> = {
   account: { icon: '🔑', label: 'アカウント' },
   sync:    { icon: '🔄', label: '設定同期' },
   update:  { icon: '⬆️', label: 'アップデート' },
+  system:  { icon: '🔧', label: 'システム設定' },
 };
 
 // ════════════════════════════════════════════════════════
@@ -30,8 +31,8 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<Tab>('sites');
 
   const visibleTabs: Tab[] = isFull
-    ? ['sites', 'network', 'video', 'display', 'account', 'sync', 'update']
-    : ['sites', 'network', 'video', 'display', 'update'];
+    ? ['sites', 'network', 'video', 'display', 'account', 'sync', 'update', 'system']
+    : ['sites', 'network', 'video', 'display', 'update', 'system'];
 
   // Esc キーで閉じる
   useEffect(() => {
@@ -90,6 +91,7 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
           {activeTab === 'account' && isFull && <AccountTab />}
           {activeTab === 'sync'    && isFull && <SyncTab />}
           {activeTab === 'update'  && <UpdateTab />}
+          {activeTab === 'system'  && <SystemTab />}
         </main>
       </div>
     </div>
@@ -886,6 +888,135 @@ const UpdateTab: React.FC = () => {
       {showDialog && (
         <UpdateDialog autoMode={false} onClose={() => setShowDialog(false)} />
       )}
+    </div>
+  );
+};
+
+// ════════════════════════════════════════════════════════
+// システム設定タブ（ファイアウォール・ポート設定）
+// ════════════════════════════════════════════════════════
+const SystemTab: React.FC = () => {
+  const [running,    setRunning]    = useState(false);
+  const [result,     setResult]     = useState<any>(null);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [platform,   setPlatform]   = useState('');
+
+  useEffect(() => {
+    (api as any).getFirewallStatus?.().then((s: any) => {
+      setConfigured(s.configured);
+      setPlatform(s.platform);
+    });
+  }, []);
+
+  const handleConfigure = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const r = await (api as any).configureFirewall?.();
+      setResult(r);
+      if (r?.success) setConfigured(true);
+    } catch (e: any) {
+      setResult({ success: false, steps: [], error: e.message });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const platformLabel = platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : platform;
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        title="システム設定"
+        description="NDI通信に必要なファイアウォール・ポートを自動設定します。初回起動時に自動実行されます。"
+      />
+
+      {/* 現在の状態 */}
+      <div className="bg-white/5 rounded-lg p-4 flex items-center justify-between">
+        <div className="space-y-0.5">
+          <p className="text-sm text-white/70">ファイアウォール設定</p>
+          <p className="text-xs text-white/40">{platformLabel} · NDI通信ポート開放</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full
+          ${configured === true
+            ? 'bg-green-900/60 text-green-300 border border-green-500/30'
+            : configured === false
+            ? 'bg-yellow-900/60 text-yellow-300 border border-yellow-500/30'
+            : 'bg-white/5 text-white/30 border border-white/10'}`}>
+          <div className={`w-1.5 h-1.5 rounded-full
+            ${configured === true ? 'bg-green-400' : configured === false ? 'bg-yellow-400' : 'bg-white/20'}`} />
+          {configured === true ? '設定済み' : configured === false ? '未設定' : '確認中...'}
+        </div>
+      </div>
+
+      {/* NDIポートの説明 */}
+      <div className="border border-white/10 rounded-lg p-4 text-xs text-white/40 space-y-1.5">
+        <p className="text-white/60 font-medium mb-2">開放するポート</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+          <span>TCP 5960–5970</span><span className="text-white/30">NDI 接続・ストリーム</span>
+          <span>UDP 5960</span>      <span className="text-white/30">NDI ディスカバリ</span>
+          <span>UDP 49152–65535</span><span className="text-white/30">NDI 動的ポート（映像・音声）</span>
+        </div>
+      </div>
+
+      {/* 実行ボタン */}
+      <button
+        onClick={handleConfigure}
+        disabled={running}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500
+          disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+      >
+        {running ? (
+          <>
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            設定中...（管理者権限ダイアログが表示されます）
+          </>
+        ) : (
+          <>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            {configured ? 'ファイアウォールを再設定' : 'ファイアウォールを設定する'}
+          </>
+        )}
+      </button>
+
+      {/* 実行結果 */}
+      {result && (
+        <div className={`rounded-lg border p-4 space-y-3
+          ${result.success
+            ? 'bg-green-950/40 border-green-500/20'
+            : 'bg-red-950/40 border-red-500/20'}`}>
+          <p className={`text-sm font-medium ${result.success ? 'text-green-300' : 'text-red-300'}`}>
+            {result.success ? '✓ 設定が完了しました' : '✗ 設定に失敗しました'}
+          </p>
+          {result.steps?.length > 0 && (
+            <div className="space-y-1.5">
+              {result.steps.map((step: any, i: number) => (
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  <span className={step.ok ? 'text-green-400' : 'text-red-400'}>
+                    {step.ok ? '✓' : '✗'}
+                  </span>
+                  <span className="text-white/60">{step.label}</span>
+                  <span className="text-white/30 ml-auto">{step.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.error && (
+            <p className="text-xs text-red-400/80 font-mono bg-red-950/40 rounded px-2 py-1">
+              {result.error}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 注意事項 */}
+      <p className="text-xs text-white/30">
+        ※ 管理者権限の確認ダイアログが表示されます。設定には数秒かかる場合があります。
+        {platform === 'darwin' && ' macOSのApplication Firewallが有効な場合のみ必要です。'}
+        {platform === 'win32'  && ' WindowsのDefender Firewallに受信ルールを追加します。'}
+      </p>
     </div>
   );
 };

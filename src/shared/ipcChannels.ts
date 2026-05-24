@@ -34,6 +34,9 @@ export const IPC = {
   UPDATE_DOWNLOADED:     'update:downloaded',  // main → renderer: ダウンロード完了
   UPDATE_ERROR:          'update:error',       // main → renderer: エラー
 
+  SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',  // renderer→main: ファイアウォール設定実行
+  SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',     // main→renderer: 設定済みかどうか
+
   AUTH_LOGIN:            'auth:login',
   AUTH_LOGOUT:           'auth:logout',
   AUTH_GET_ROLE:         'auth:getRole',

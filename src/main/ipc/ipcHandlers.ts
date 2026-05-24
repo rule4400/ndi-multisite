@@ -1,12 +1,20 @@
 import { ipcMain, BrowserWindow, screen, app } from 'electron';
 import { IPC } from '../../shared/ipcChannels';
 import { ndiEngine, configManager, authManager, audioEngine, syncManager } from '../index';
+import { firewallManager } from '../system/firewallManager';
 import { Site, UserRole } from '../../shared/types';
 
 export function setupIpcHandlers(window: BrowserWindow): void {
 
   // --- App Info ---
   ipcMain.handle('app:version', () => app.getVersion());
+
+  // --- System ---
+  ipcMain.handle(IPC.SYSTEM_CONFIGURE_FIREWALL, () => firewallManager.configure());
+  ipcMain.handle(IPC.SYSTEM_FIREWALL_STATUS,    () => ({
+    configured: firewallManager.isConfigured(),
+    platform:   process.platform,
+  }));
 
   // --- Auth ---
   ipcMain.handle(IPC.AUTH_IS_FIRST_RUN, async () => {

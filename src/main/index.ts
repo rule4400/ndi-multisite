@@ -8,6 +8,7 @@ import { ConfigManager } from './config/configManager';
 import { AuthManager } from './auth/authManager';
 import { AudioEngine } from './audio/audioEngine';
 import { SyncManager } from './sync/syncManager';
+import { firewallManager } from './system/firewallManager';
 import { IPC } from '../shared/ipcChannels';
 
 log.initialize();
@@ -123,6 +124,22 @@ function setupAutoUpdater(): void {
 app.whenReady().then(async () => {
   log.info('App starting...');
   await requestMediaPermissions();
+
+  // 初回起動時にファイアウォール設定を自動実行（バックグラウンド）
+  if (app.isPackaged) {
+    firewallManager.configureIfNeeded()
+      .then(result => {
+        if (result) {
+          log.info('[Firewall] Auto-configure result:', result);
+          // ウィンドウが準備できてから結果を送信
+          mainWindow?.webContents.once('did-finish-load', () => {
+            mainWindow?.webContents.send(IPC.SYSTEM_FIREWALL_STATUS, result);
+          });
+        }
+      })
+      .catch(e => log.warn('[Firewall] Auto-configure failed:', e));
+  }
+
   const config = configManager.get();
   await ndiEngine.initialize(config, null);
   await createWindow();
