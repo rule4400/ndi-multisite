@@ -51,6 +51,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
+            release/*.yml
           retention-days: 30
 
   # ══════════════════════════════════════════════
@@ -103,6 +104,7 @@ jobs:
           name: win-release
           path: |
             release/*.exe
+            release/*.yml
           retention-days: 30
 
   # ══════════════════════════════════════════════
@@ -134,6 +136,8 @@ jobs:
           files: |
             release/mac/*.dmg
             release/mac/*.zip
+            release/mac/*.yml
             release/win/*.exe
+            release/win/*.yml
           generate_release_notes: true
           draft: false

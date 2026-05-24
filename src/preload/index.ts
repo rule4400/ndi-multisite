@@ -12,6 +12,14 @@ const IPC = {
   STREAM_PUSH_FRAME:     'stream:pushFrame',
   STREAM_PUSH_AUDIO:     'stream:pushAudio',
   DEVICE_GET_CAMERAS:    'device:getCameras',
+  UPDATE_CHECK:          'update:check',
+  UPDATE_INSTALL:        'update:install',
+  UPDATE_CHECKING:       'update:checking',
+  UPDATE_AVAILABLE:      'update:available',
+  UPDATE_NOT_AVAILABLE:  'update:notAvailable',
+  UPDATE_PROGRESS:       'update:progress',
+  UPDATE_DOWNLOADED:     'update:downloaded',
+  UPDATE_ERROR:          'update:error',
   CTRL_SET_CAMERA:       'control:setCamera',
   CTRL_SET_MIC:          'control:setMic',
   CTRL_SET_SPEAKER:      'control:setSpeaker',
@@ -111,6 +119,42 @@ const api = {
     ipcRenderer.invoke('sync:now'),
   discoverHost: (port: number, subnet: string): Promise<string | null> =>
     ipcRenderer.invoke('sync:discoverHost', port, subnet),
+
+  // Auto updater
+  checkForUpdates: (): Promise<any> =>
+    ipcRenderer.invoke(IPC.UPDATE_CHECK),
+  installUpdate: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.UPDATE_INSTALL),
+  onUpdateChecking:     (cb: () => void) => {
+    const h = () => cb();
+    ipcRenderer.on(IPC.UPDATE_CHECKING, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_CHECKING, h);
+  },
+  onUpdateAvailable:    (cb: (info: any) => void) => {
+    const h = (_: any, info: any) => cb(info);
+    ipcRenderer.on(IPC.UPDATE_AVAILABLE, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_AVAILABLE, h);
+  },
+  onUpdateNotAvailable: (cb: (info: any) => void) => {
+    const h = (_: any, info: any) => cb(info);
+    ipcRenderer.on(IPC.UPDATE_NOT_AVAILABLE, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_NOT_AVAILABLE, h);
+  },
+  onUpdateProgress:     (cb: (progress: any) => void) => {
+    const h = (_: any, prog: any) => cb(prog);
+    ipcRenderer.on(IPC.UPDATE_PROGRESS, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_PROGRESS, h);
+  },
+  onUpdateDownloaded:   (cb: (info: any) => void) => {
+    const h = (_: any, info: any) => cb(info);
+    ipcRenderer.on(IPC.UPDATE_DOWNLOADED, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_DOWNLOADED, h);
+  },
+  onUpdateError:        (cb: (message: string) => void) => {
+    const h = (_: any, msg: string) => cb(msg);
+    ipcRenderer.on(IPC.UPDATE_ERROR, h);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, h);
+  },
 
   onConfigUpdate: (callback: (config: AppConfig) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, config: AppConfig) => callback(config);

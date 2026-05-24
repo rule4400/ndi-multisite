@@ -23,6 +23,15 @@ export const IPC = {
   CONFIG_REMOVE_SITE:    'config:removeSite',
   CONFIG_GET_MONITORS:   'config:getMonitors',
 
+  UPDATE_CHECK:          'update:check',       // renderer → main: 手動チェック
+  UPDATE_INSTALL:        'update:install',     // renderer → main: 今すぐ再起動して適用
+  UPDATE_CHECKING:       'update:checking',    // main → renderer: チェック中
+  UPDATE_AVAILABLE:      'update:available',   // main → renderer: 新バージョンあり
+  UPDATE_NOT_AVAILABLE:  'update:notAvailable',// main → renderer: 最新版
+  UPDATE_PROGRESS:       'update:progress',    // main → renderer: ダウンロード進捗
+  UPDATE_DOWNLOADED:     'update:downloaded',  // main → renderer: ダウンロード完了
+  UPDATE_ERROR:          'update:error',       // main → renderer: エラー
+
   AUTH_LOGIN:            'auth:login',
   AUTH_LOGOUT:           'auth:logout',
   AUTH_GET_ROLE:         'auth:getRole',

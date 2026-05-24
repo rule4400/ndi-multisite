@@ -31,5 +31,10 @@
     "include": "installer.nsh"
   },
   "npmRebuild": true,
-  "buildDependenciesFromSource": false
+  "buildDependenciesFromSource": false,
+  "publish": {
+    "provider": "github",
+    "owner": "rule4400",
+    "repo": "ndi-multisite"
+  }
 }

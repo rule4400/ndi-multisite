@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VideoGrid } from '../components/VideoGrid';
 import { ControlPanel } from '../components/ControlPanel';
 import { SettingsView } from './SettingsView';
+import { UpdateBanner } from '../components/UpdateBanner';
 import { useStreamStore } from '../stores/useStreamStore';
 import { useConfigStore } from '../stores/useConfigStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -78,6 +79,7 @@ export const MainView: React.FC = () => {
         <ControlPanel />
       </div>
 
+      <UpdateBanner />
       {showSettings && <SettingsView onClose={() => setShowSettings(false)} />}
     </div>
   );

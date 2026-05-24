@@ -1,12 +1,14 @@
-import { app, BrowserWindow, dialog, systemPreferences, screen } from 'electron';
+import { app, BrowserWindow, dialog, systemPreferences, screen, ipcMain } from 'electron';
 import * as path from 'path';
 import log from 'electron-log';
+import { autoUpdater } from 'electron-updater';
 import { setupIpcHandlers } from './ipc/ipcHandlers';
 import { NDIEngine } from './ndi/ndiEngine';
 import { ConfigManager } from './config/configManager';
 import { AuthManager } from './auth/authManager';
 import { AudioEngine } from './audio/audioEngine';
 import { SyncManager } from './sync/syncManager';
+import { IPC } from '../shared/ipcChannels';
 
 log.initialize();
 log.transports.file.level = 'info';
@@ -94,6 +96,30 @@ async function createWindow(): Promise<void> {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// ── 自動アップデート設定 ───────────────────────────────
+function setupAutoUpdater(): void {
+  autoUpdater.logger = log;
+  (autoUpdater.logger as any).transports.file.level = 'info';
+
+  // バックグラウンドで自動ダウンロード
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  const send = (channel: string, ...args: any[]) =>
+    mainWindow?.webContents.send(channel, ...args);
+
+  autoUpdater.on('checking-for-update',   ()       => send(IPC.UPDATE_CHECKING));
+  autoUpdater.on('update-available',      (info)   => { log.info('Update available:', info.version); send(IPC.UPDATE_AVAILABLE, info); });
+  autoUpdater.on('update-not-available',  (info)   => { log.info('Already up-to-date:', info.version); send(IPC.UPDATE_NOT_AVAILABLE, info); });
+  autoUpdater.on('download-progress',     (prog)   => send(IPC.UPDATE_PROGRESS, prog));
+  autoUpdater.on('update-downloaded',     (info)   => { log.info('Update downloaded:', info.version); send(IPC.UPDATE_DOWNLOADED, info); });
+  autoUpdater.on('error',                 (err)    => { log.error('AutoUpdater error:', err); send(IPC.UPDATE_ERROR, err.message); });
+
+  // renderer からの操作を受け付ける
+  ipcMain.handle(IPC.UPDATE_CHECK,   () => autoUpdater.checkForUpdates());
+  ipcMain.handle(IPC.UPDATE_INSTALL, () => { autoUpdater.quitAndInstall(false, true); });
+}
+
 app.whenReady().then(async () => {
   log.info('App starting...');
   await requestMediaPermissions();
@@ -103,6 +129,15 @@ app.whenReady().then(async () => {
   ndiEngine.setWindow(mainWindow!);
   syncManager.setWindow(mainWindow!);
   await syncManager.start();
+
+  // パッケージ済みアプリのみ自動アップデートを有効化
+  if (app.isPackaged) {
+    setupAutoUpdater();
+    // 起動 5 秒後にアップデートチェック（起動処理が落ち着いてから）
+    setTimeout(() => autoUpdater.checkForUpdates().catch(e => log.warn('Update check failed:', e)), 5000);
+  } else {
+    log.info('開発モード: 自動アップデートをスキップ');
+  }
 });
 
 app.on('before-quit', async () => {
