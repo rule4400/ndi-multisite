@@ -1,9 +1,12 @@
-import { ipcMain, BrowserWindow, screen } from 'electron';
+import { ipcMain, BrowserWindow, screen, app } from 'electron';
 import { IPC } from '../../shared/ipcChannels';
 import { ndiEngine, configManager, authManager, audioEngine, syncManager } from '../index';
 import { Site, UserRole } from '../../shared/types';
 
 export function setupIpcHandlers(window: BrowserWindow): void {
+
+  // --- App Info ---
+  ipcMain.handle('app:version', () => app.getVersion());
 
   // --- Auth ---
   ipcMain.handle(IPC.AUTH_IS_FIRST_RUN, async () => {

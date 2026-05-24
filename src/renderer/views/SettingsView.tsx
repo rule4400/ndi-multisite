@@ -809,6 +809,13 @@ const UpdateTab: React.FC = () => {
   const [checking, setChecking]     = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [lastCheck, setLastCheck]   = useState<Date | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    (window as any).electronAPI?.getAppVersion?.()
+      .then((v: string) => setAppVersion(v))
+      .catch(() => setAppVersion('不明'));
+  }, []);
 
   const handleCheck = async () => {
     setChecking(true);
@@ -834,7 +841,7 @@ const UpdateTab: React.FC = () => {
       <div className="bg-white/5 rounded-lg p-4 space-y-1">
         <p className="text-xs text-white/40">現在のバージョン</p>
         <p className="text-white font-semibold text-lg">
-          {(window as any).electronAPI?.version ?? '取得中...'}
+          {appVersion || '取得中...'}
         </p>
         {lastCheck && (
           <p className="text-xs text-white/30">
