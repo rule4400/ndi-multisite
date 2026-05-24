@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useConfigStore } from '../stores/useConfigStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { Site, MonitorInfo, UserRole } from '../../shared/types';
@@ -67,73 +67,269 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
   );
 };
 
-const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
-  const { config, addSite, removeSite } = useConfigStore();
-  const [newName, setNewName] = useState('');
-  const [newNdi, setNewNdi] = useState('');
-  const [newIp, setNewIp] = useState('');
+// ── 拠点フォーム（追加・編集共通）────────────────────────
+interface SiteFormValues { name: string; ndiSourceName: string; vpnIp: string; enabled: boolean; }
 
-  const handleAdd = async () => {
-    if (!newName || !newNdi) return;
-    const site: Site = {
-      id: crypto.randomUUID(),
-      name: newName,
-      ndiSourceName: newNdi,
-      vpnIp: newIp,
-      enabled: true,
-    };
-    await addSite(site);
-    setNewName(''); setNewNdi(''); setNewIp('');
-  };
+const EMPTY_FORM: SiteFormValues = { name: '', ndiSourceName: '', vpnIp: '', enabled: true };
+
+const SiteForm: React.FC<{
+  initial?: SiteFormValues;
+  onSave: (v: SiteFormValues) => void;
+  onCancel: () => void;
+  submitLabel: string;
+}> = ({ initial = EMPTY_FORM, onSave, onCancel, submitLabel }) => {
+  const [v, setV] = useState<SiteFormValues>(initial);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.focus(); }, []);
+
+  const inputCls = 'w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500 transition-colors';
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        {config?.sites.map(site => (
-          <div key={site.id} className="flex items-center gap-3 bg-white/5 rounded-lg px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-medium truncate">{site.name}</div>
-              <div className="text-white/50 text-xs truncate">{site.ndiSourceName} · {site.vpnIp}</div>
-            </div>
-            {!readonly && (
-              <button
-                onClick={() => removeSite(site.id)}
-                className="text-red-400 hover:text-red-300 text-sm"
-              >
-                削除
-              </button>
-            )}
-          </div>
-        ))}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-white/50 mb-1">拠点名 <span className="text-red-400">*</span></label>
+          <input ref={nameRef} value={v.name}
+            onChange={e => setV(p => ({ ...p, name: e.target.value }))}
+            placeholder="例: 本部" className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs text-white/50 mb-1">NDIソース名 <span className="text-red-400">*</span></label>
+          <input value={v.ndiSourceName}
+            onChange={e => setV(p => ({ ...p, ndiSourceName: e.target.value }))}
+            placeholder="例: HQ-Camera" className={inputCls} />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-white/50 mb-1">VPN IPアドレス</label>
+        <input value={v.vpnIp}
+          onChange={e => setV(p => ({ ...p, vpnIp: e.target.value }))}
+          placeholder="例: 10.0.0.1" className={inputCls} />
+      </div>
+      <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer select-none">
+        <input type="checkbox" checked={v.enabled}
+          onChange={e => setV(p => ({ ...p, enabled: e.target.checked }))}
+          className="w-4 h-4 accent-blue-500" />
+        接続を有効にする
+      </label>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => { if (v.name && v.ndiSourceName) onSave(v); }}
+          disabled={!v.name || !v.ndiSourceName}
+          className="flex-1 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+        >
+          {submitLabel}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 text-white/70 text-sm transition-colors"
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── 拠点行（表示 / インライン編集）──────────────────────
+const SiteRow: React.FC<{
+  site: Site;
+  readonly: boolean;
+  onUpdate: (patch: Partial<Omit<Site, 'id'>>) => void;
+  onRemove: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+}> = ({ site, readonly, onUpdate, onRemove, onDragStart, onDragOver, onDrop }) => {
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (editing) {
+    return (
+      <div className="bg-blue-950/40 border border-blue-500/40 rounded-lg px-4 py-3">
+        <div className="text-xs text-blue-300 font-medium mb-3">✏️ 「{site.name}」を編集</div>
+        <SiteForm
+          initial={{ name: site.name, ndiSourceName: site.ndiSourceName, vpnIp: site.vpnIp, enabled: site.enabled }}
+          onSave={v => { onUpdate(v); setEditing(false); }}
+          onCancel={() => setEditing(false)}
+          submitLabel="保存"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      draggable={!readonly}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className="group flex items-center gap-3 bg-white/5 hover:bg-white/8 rounded-lg px-3 py-2.5 transition-colors"
+    >
+      {/* ドラッグハンドル */}
+      {!readonly && (
+        <div className="text-white/20 group-hover:text-white/40 cursor-grab active:cursor-grabbing select-none shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/>
+            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+            <circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/>
+          </svg>
+        </div>
+      )}
+
+      {/* 有効/無効トグル */}
+      {!readonly && (
+        <button
+          onClick={() => onUpdate({ enabled: !site.enabled })}
+          title={site.enabled ? '無効にする' : '有効にする'}
+          className={`w-8 h-5 rounded-full transition-colors shrink-0 relative
+            ${site.enabled ? 'bg-blue-600' : 'bg-white/20'}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
+            ${site.enabled ? 'left-3.5' : 'left-0.5'}`} />
+        </button>
+      )}
+
+      {/* 情報 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-medium truncate ${site.enabled ? 'text-white' : 'text-white/40'}`}>
+            {site.name}
+          </span>
+          {!site.enabled && (
+            <span className="text-xs text-white/30 bg-white/10 px-1.5 py-0.5 rounded shrink-0">無効</span>
+          )}
+        </div>
+        <div className="text-xs text-white/40 truncate">
+          {site.ndiSourceName}{site.vpnIp ? ` · ${site.vpnIp}` : ''}
+        </div>
       </div>
 
+      {/* 操作ボタン */}
       {!readonly && (
-        <div className="border border-white/10 rounded-lg p-4 space-y-3">
-          <h3 className="text-white/70 text-sm font-medium">拠点を追加</h3>
-          <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            placeholder="拠点名（例: 本部）"
-            className="w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500"
-          />
-          <input
-            value={newNdi}
-            onChange={e => setNewNdi(e.target.value)}
-            placeholder="NDIソース名（例: HQ-Camera）"
-            className="w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500"
-          />
-          <input
-            value={newIp}
-            onChange={e => setNewIp(e.target.value)}
-            placeholder="VPN IPアドレス（例: 10.0.0.1）"
-            className="w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500"
-          />
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={handleAdd}
-            className="w-full py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+            onClick={() => setEditing(true)}
+            className="p-1.5 rounded hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+            title="編集"
           >
-            追加
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
           </button>
+          {confirmDelete ? (
+            <>
+              <button
+                onClick={() => { onRemove(); setConfirmDelete(false); }}
+                className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-medium transition-colors"
+              >
+                削除確認
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/60 text-xs transition-colors"
+              >
+                戻る
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="p-1.5 rounded hover:bg-red-600/20 text-white/50 hover:text-red-400 transition-colors"
+              title="削除"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── 拠点タブ本体 ─────────────────────────────────────────
+const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
+  const { config, addSite, removeSite, updateSite, reorderSites } = useConfigStore();
+  const [showAdd, setShowAdd] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const sites = config?.sites ?? [];
+
+  const handleAdd = async (v: SiteFormValues) => {
+    const site: Site = { id: crypto.randomUUID(), ...v };
+    await addSite(site);
+    setShowAdd(false);
+  };
+
+  const handleDrop = useCallback((targetId: string) => {
+    if (!draggingId || draggingId === targetId) return;
+    const arr = [...sites];
+    const si = arr.findIndex(s => s.id === draggingId);
+    const ti = arr.findIndex(s => s.id === targetId);
+    if (si === -1 || ti === -1) return;
+    const [item] = arr.splice(si, 1);
+    arr.splice(ti, 0, item);
+    reorderSites(arr);
+    setDraggingId(null);
+  }, [draggingId, sites, reorderSites]);
+
+  return (
+    <div className="space-y-3">
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-white/40">
+          {sites.length} 拠点{!readonly && '　ドラッグで並び替え可能'}
+        </span>
+        {!readonly && !showAdd && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            拠点を追加
+          </button>
+        )}
+      </div>
+
+      {/* 拠点リスト */}
+      <div className="space-y-1.5">
+        {sites.map(site => (
+          <SiteRow
+            key={site.id}
+            site={site}
+            readonly={readonly}
+            onUpdate={patch => updateSite(site.id, patch)}
+            onRemove={() => removeSite(site.id)}
+            onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDraggingId(site.id); }}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleDrop(site.id); }}
+          />
+        ))}
+        {sites.length === 0 && (
+          <div className="text-center py-8 text-white/30 text-sm">
+            拠点が登録されていません
+          </div>
+        )}
+      </div>
+
+      {/* 追加フォーム */}
+      {!readonly && showAdd && (
+        <div className="border border-white/10 rounded-lg p-4">
+          <div className="text-xs text-white/50 font-medium mb-3">➕ 新しい拠点を追加</div>
+          <SiteForm
+            onSave={handleAdd}
+            onCancel={() => setShowAdd(false)}
+            submitLabel="追加"
+          />
         </div>
       )}
     </div>
