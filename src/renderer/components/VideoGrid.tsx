@@ -165,7 +165,11 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
 
   const handleClick = useCallback((id: string) => {
     if (!focusOnClick) return;
-    setFocusedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setFocusedIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      if (prev.length >= 2) return prev; // 最大2つまで
+      return [...prev, id];
+    });
   }, [focusOnClick]);
 
   // ミュートトグル
@@ -374,7 +378,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
             gap: '4px',
           }}
         >
-          {/* ── メインエリア（フォーカス拠点を縦積み）── */}
+          {/* ── メインエリア（1つ: 縦全体 / 2つ: 横並び）── */}
           <div
             style={{
               gridColumn: `1 / span ${mainColSpan}`,
@@ -382,7 +386,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
               minHeight: 0,
               minWidth: 0,
               display: 'flex',
-              flexDirection: 'column',
+              flexDirection: focusedCells.length >= 2 ? 'row' : 'column',
               gap: '4px',
             }}
             onDragOver={e => e.preventDefault()}
