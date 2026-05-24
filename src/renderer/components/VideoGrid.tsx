@@ -10,7 +10,7 @@ interface VideoGridProps {
   streamStatuses: StreamState[];
 }
 
-const LOCAL_SITE_ID = '__local__';
+const LOCAL_ID = '__local__';
 
 function calcGrid(count: number): { cols: number; rows: number } {
   if (count <= 1)  return { cols: 1, rows: 1 };
@@ -30,62 +30,54 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   const isFull = role === 'full';
 
   const enabledSites = sites.filter(s => s.enabled);
-
-  // Full Accessのみ自拠点カメラを先頭に表示
   const totalCount = isFull ? enabledSites.length + 1 : enabledSites.length;
-
-  let cols: number;
-  let rows: number;
-  if (gridLayout !== 'auto') {
-    const parts = gridLayout.split('x').map(Number);
-    cols = parts[0];
-    rows = parts[1];
-  } else {
-    ({ cols, rows } = calcGrid(totalCount));
-  }
 
   const handleClick = (id: string) => {
     if (!focusOnClick) return;
     setFocusedId(prev => prev === id ? null : id);
   };
 
-  // フォーカスモード
+  // ── フォーカスモード ──────────────────────────────
   if (focusedId) {
-    const isLocalFocused = focusedId === LOCAL_SITE_ID;
-    const focusedSite = !isLocalFocused ? enabledSites.find(s => s.id === focusedId) : null;
-    const otherSites = enabledSites.filter(s => s.id !== focusedId);
+    const isLocal = focusedId === LOCAL_ID;
+    const focusedSite = isLocal ? null : enabledSites.find(s => s.id === focusedId);
+    const sidebarSites = enabledSites.filter(s => s.id !== focusedId);
 
     return (
-      <div className="flex w-full h-full gap-1 p-1">
-        {/* メイン（拡大） */}
-        <div className="flex-[2] min-w-0">
-          {isLocalFocused ? (
-            <LocalVideoCell
-              siteName={siteName}
-              focused={true}
-              onClick={() => handleClick(LOCAL_SITE_ID)}
-            />
-          ) : focusedSite ? (
-            <VideoCell
-              site={focusedSite}
-              streamState={streamStatuses.find(s => s.siteId === focusedSite.id)}
-              focused={true}
-              onClick={() => handleClick(focusedSite.id)}
-            />
-          ) : null}
+      <div className="flex w-full h-full overflow-hidden">
+        {/* ── メインエリア（左 2/3） ── */}
+        <div className="flex-[2] min-w-0 p-1 pr-0.5">
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full" style={{ aspectRatio: '16/9', maxHeight: '100%' }}>
+              {isLocal ? (
+                <LocalVideoCell
+                  siteName={siteName}
+                  focused={true}
+                  onClick={() => handleClick(LOCAL_ID)}
+                />
+              ) : focusedSite ? (
+                <VideoCell
+                  site={focusedSite}
+                  streamState={streamStatuses.find(s => s.siteId === focusedSite.id)}
+                  focused={true}
+                  onClick={() => handleClick(focusedSite.id)}
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
 
-        {/* サイドリスト */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1 overflow-y-auto">
-          {/* 自拠点がフォーカスされていない場合はサイドに表示 */}
-          {isFull && !isLocalFocused && (
+        {/* ── サイドバー（右 1/3）縦スクロール ── */}
+        <div className="flex-1 min-w-0 p-1 pl-0.5 overflow-y-auto flex flex-col gap-1">
+          {/* 自拠点がフォーカスされていないときだけサイドに表示 */}
+          {isFull && !isLocal && (
             <LocalVideoCell
               siteName={siteName}
               focused={false}
-              onClick={() => handleClick(LOCAL_SITE_ID)}
+              onClick={() => handleClick(LOCAL_ID)}
             />
           )}
-          {otherSites.map(site => (
+          {sidebarSites.map(site => (
             <VideoCell
               key={site.id}
               site={site}
@@ -99,7 +91,17 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
     );
   }
 
-  // 通常グリッド表示
+  // ── 通常グリッド ──────────────────────────────────
+  let cols: number;
+  let rows: number;
+  if (gridLayout !== 'auto') {
+    const parts = gridLayout.split('x').map(Number);
+    cols = parts[0];
+    rows = parts[1];
+  } else {
+    ({ cols, rows } = calcGrid(totalCount));
+  }
+
   return (
     <div
       className="w-full h-full p-1"
@@ -110,22 +112,19 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
         gap: '4px',
       }}
     >
-      {/* 自拠点セル（先頭） */}
       {isFull && (
         <LocalVideoCell
           siteName={siteName}
-          focused={focusedId === LOCAL_SITE_ID}
-          onClick={() => handleClick(LOCAL_SITE_ID)}
+          focused={false}
+          onClick={() => handleClick(LOCAL_ID)}
         />
       )}
-
-      {/* 他拠点 */}
       {enabledSites.map(site => (
         <VideoCell
           key={site.id}
           site={site}
           streamState={streamStatuses.find(s => s.siteId === site.id)}
-          focused={focusedId === site.id}
+          focused={false}
           onClick={() => handleClick(site.id)}
         />
       ))}
