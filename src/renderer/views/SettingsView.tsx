@@ -142,9 +142,19 @@ const NetworkTab: React.FC = () => {
   const { config, setConfig } = useConfigStore();
   const [ip, setIp] = useState(config?.discoveryServerIp ?? '');
   const [ndiName, setNdiName] = useState(config?.ndiSourceName ?? '');
+  const [siteName, setSiteName] = useState(config?.siteName ?? '');
 
   return (
     <div className="space-y-4">
+      <Field label="自拠点名（グリッドに表示される名前）">
+        <input
+          value={siteName}
+          onChange={e => setSiteName(e.target.value)}
+          onBlur={() => setConfig({ siteName })}
+          placeholder="例: 本部"
+          className="input"
+        />
+      </Field>
       <Field label="Discovery Server IP">
         <input
           value={ip}

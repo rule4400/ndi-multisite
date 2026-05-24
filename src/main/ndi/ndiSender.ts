@@ -54,6 +54,7 @@ export class NDISender {
         frameRateN: this.frameRate * 1000,
         frameRateD: 1000,
         fourCC: this.grandiose.FOURCC_BGRA,
+        pictureAspectRatio: this.width / this.height,
         data: Buffer.from(data.buffer),
         lineStrideBytes: this.width * 4,
       });
