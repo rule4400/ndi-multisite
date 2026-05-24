@@ -6,6 +6,12 @@ const DEFAULT_CONFIG: AppConfig = {
   ndiSourceName: 'NDI-Multisite-Local',
   discoveryServerIp: '',
   sites: [],
+  sync: {
+    mode: 'none',
+    hostIp: '',
+    port: 34567,
+    intervalSec: 30,
+  },
   video: {
     resolution: '1280x720',
     frameRate: 30,

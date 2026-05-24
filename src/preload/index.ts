@@ -84,6 +84,12 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.STREAM_STATUS_UPDATE, handler);
   },
 
+  // Sync
+  syncNow: (): Promise<{ success: boolean; message: string }> =>
+    ipcRenderer.invoke('sync:now'),
+  discoverHost: (port: number, subnet: string): Promise<string | null> =>
+    ipcRenderer.invoke('sync:discoverHost', port, subnet),
+
   onConfigUpdate: (callback: (config: AppConfig) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, config: AppConfig) => callback(config);
     ipcRenderer.on(IPC.CONFIG_GET, handler);

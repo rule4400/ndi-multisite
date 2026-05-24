@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = 'sites' | 'network' | 'video' | 'display' | 'account';
+type Tab = 'sites' | 'network' | 'video' | 'display' | 'account' | 'sync';
 
 export const SettingsView: React.FC<Props> = ({ onClose }) => {
   const role = useAuthStore(s => s.role);
@@ -22,6 +22,7 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
     { id: 'video', label: '映像品質' },
     { id: 'display', label: '表示設定' },
     { id: 'account', label: 'アカウント', hidden: !isFull },
+    { id: 'sync', label: '設定同期', hidden: !isFull },
   ];
 
   return (
@@ -59,6 +60,7 @@ export const SettingsView: React.FC<Props> = ({ onClose }) => {
           {activeTab === 'video' && <VideoTab />}
           {activeTab === 'display' && <DisplayTab />}
           {activeTab === 'account' && isFull && <AccountTab />}
+          {activeTab === 'sync' && isFull && <SyncTab />}
         </div>
       </div>
     </div>
@@ -310,6 +312,154 @@ const AccountTab: React.FC = () => {
       >
         {saved ? '保存しました' : '保存'}
       </button>
+    </div>
+  );
+};
+
+const SyncTab: React.FC = () => {
+  const { config, setConfig } = useConfigStore();
+  const sync = config?.sync ?? { mode: 'none', hostIp: '', port: 34567, intervalSec: 30 };
+  const [hostIp, setHostIp] = useState(sync.hostIp);
+  const [port, setPort] = useState(String(sync.port));
+  const [interval, setInterval_] = useState(String(sync.intervalSec));
+  const [status, setStatus] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+
+  const save = (patch: Partial<typeof sync>) => {
+    setConfig({ sync: { ...sync, ...patch, port: Number(port), intervalSec: Number(interval) } });
+  };
+
+  const handleSyncNow = async () => {
+    setStatus('同期中...');
+    const result = await api.syncNow();
+    setStatus(result.message);
+  };
+
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    setStatus('ホストを検索中...');
+    const found = await api.discoverHost(Number(port), hostIp || '192.168.1.1');
+    setDiscovering(false);
+    if (found) {
+      setHostIp(found);
+      setStatus(`ホストを発見: ${found}`);
+    } else {
+      setStatus('ホストが見つかりませんでした');
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* モード選択 */}
+      <div>
+        <label className="block text-sm text-white/60 mb-2">同期モード</label>
+        <div className="flex gap-2">
+          {(['none', 'host', 'client'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => save({ mode: m })}
+              className={`px-4 py-2 rounded text-sm font-medium transition-colors
+                ${sync.mode === m ? 'bg-blue-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
+            >
+              {m === 'none' ? '同期なし' : m === 'host' ? 'ホスト（配信）' : 'クライアント（受信）'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ホストモードの説明 */}
+      {sync.mode === 'host' && (
+        <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4 text-sm text-blue-200 space-y-1">
+          <p className="font-medium">📡 ホストモード（配信中）</p>
+          <p>このPCが拠点設定を配信します。他のPCはこのPCのIPアドレスを「クライアント」に設定してください。</p>
+          <p className="text-blue-300">ポート {sync.port} で待機中</p>
+        </div>
+      )}
+
+      {/* クライアントモードの設定 */}
+      {sync.mode === 'client' && (
+        <div className="space-y-3">
+          <div className="bg-green-900/30 border border-green-500/30 rounded-lg p-3 text-sm text-green-200">
+            <p className="font-medium">📥 クライアントモード</p>
+            <p>ホストPCのIPアドレスを入力してください。{sync.intervalSec}秒ごとに自動同期します。</p>
+          </div>
+
+          <Field label="ホストのIPアドレス">
+            <div className="flex gap-2">
+              <input
+                value={hostIp}
+                onChange={e => setHostIp(e.target.value)}
+                onBlur={() => save({ hostIp })}
+                placeholder="例: 192.168.1.100"
+                className="input flex-1"
+              />
+              <button
+                onClick={handleDiscover}
+                disabled={discovering}
+                className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white/70 text-sm disabled:opacity-50 whitespace-nowrap"
+              >
+                {discovering ? '検索中...' : '自動検出'}
+              </button>
+            </div>
+          </Field>
+
+          <div className="flex gap-3">
+            <Field label="ポート番号">
+              <input
+                value={port}
+                onChange={e => setPort(e.target.value)}
+                onBlur={() => save({ port: Number(port) })}
+                className="input w-28"
+                type="number"
+              />
+            </Field>
+            <Field label="同期間隔（秒）">
+              <input
+                value={interval}
+                onChange={e => setInterval_(e.target.value)}
+                onBlur={() => save({ intervalSec: Number(interval) })}
+                className="input w-28"
+                type="number"
+                min="10"
+              />
+            </Field>
+          </div>
+
+          <button
+            onClick={handleSyncNow}
+            className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium"
+          >
+            今すぐ同期
+          </button>
+        </div>
+      )}
+
+      {/* ポート設定（ホストのみ） */}
+      {sync.mode === 'host' && (
+        <Field label="ポート番号">
+          <input
+            value={port}
+            onChange={e => setPort(e.target.value)}
+            onBlur={() => save({ port: Number(port) })}
+            className="input w-28"
+            type="number"
+          />
+        </Field>
+      )}
+
+      {/* ステータス */}
+      {status && (
+        <p className="text-sm text-white/60 bg-white/5 rounded px-3 py-2">{status}</p>
+      )}
+
+      {/* 使い方ガイド */}
+      <div className="border border-white/10 rounded-lg p-4 text-xs text-white/40 space-y-1">
+        <p className="text-white/60 font-medium mb-2">使い方</p>
+        <p>1. ホストPC（本部など）でモードを <span className="text-white/70">「ホスト（配信）」</span> に設定</p>
+        <p>2. 各拠点PCでモードを <span className="text-white/70">「クライアント（受信）」</span> に設定</p>
+        <p>3. クライアント側にホストPCのIPアドレスを入力</p>
+        <p>4. 設定を保存すると自動的に拠点設定が同期されます</p>
+      </div>
     </div>
   );
 };

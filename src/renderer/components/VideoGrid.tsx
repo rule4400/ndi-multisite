@@ -41,51 +41,65 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   if (focusedId) {
     const isLocal = focusedId === LOCAL_ID;
     const focusedSite = isLocal ? null : enabledSites.find(s => s.id === focusedId);
-    const sidebarSites = enabledSites.filter(s => s.id !== focusedId);
+
+    // サイドバーのセル一覧（自拠点 + 他拠点）
+    const sideItems: { id: string; isLocal: boolean; site?: Site }[] = [];
+    if (isFull && !isLocal) sideItems.push({ id: LOCAL_ID, isLocal: true });
+    enabledSites
+      .filter(s => s.id !== focusedId)
+      .forEach(s => sideItems.push({ id: s.id, isLocal: false, site: s }));
+
+    // サイドバーのグリッド列数（セル数に応じて自動計算）
+    const sideCols = sideItems.length <= 3 ? 1 : sideItems.length <= 8 ? 2 : 3;
 
     return (
-      <div className="flex w-full h-full overflow-hidden">
-        {/* ── メインエリア（左 2/3） ── */}
-        <div className="flex-[2] min-w-0 p-1 pr-0.5">
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="w-full" style={{ aspectRatio: '16/9', maxHeight: '100%' }}>
-              {isLocal ? (
-                <LocalVideoCell
-                  siteName={siteName}
-                  focused={true}
-                  onClick={() => handleClick(LOCAL_ID)}
-                />
-              ) : focusedSite ? (
-                <VideoCell
-                  site={focusedSite}
-                  streamState={streamStatuses.find(s => s.siteId === focusedSite.id)}
-                  focused={true}
-                  onClick={() => handleClick(focusedSite.id)}
-                />
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {/* ── サイドバー（右 1/3）縦スクロール ── */}
-        <div className="flex-1 min-w-0 p-1 pl-0.5 overflow-y-auto flex flex-col gap-1">
-          {/* 自拠点がフォーカスされていないときだけサイドに表示 */}
-          {isFull && !isLocal && (
+      <div className="flex w-full h-full overflow-hidden gap-1 p-1">
+        {/* ── 左上：拡大表示 ── */}
+        <div className="flex-[2] min-w-0 self-start">
+          {isLocal ? (
             <LocalVideoCell
               siteName={siteName}
-              focused={false}
+              focused={true}
               onClick={() => handleClick(LOCAL_ID)}
             />
-          )}
-          {sidebarSites.map(site => (
+          ) : focusedSite ? (
             <VideoCell
-              key={site.id}
-              site={site}
-              streamState={streamStatuses.find(s => s.siteId === site.id)}
-              focused={false}
-              onClick={() => handleClick(site.id)}
+              site={focusedSite}
+              streamState={streamStatuses.find(s => s.siteId === focusedSite.id)}
+              focused={true}
+              onClick={() => handleClick(focusedSite.id)}
             />
-          ))}
+          ) : null}
+        </div>
+
+        {/* ── 右：残りを均等グリッド ── */}
+        <div
+          className="flex-1 min-w-0 overflow-y-auto"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${sideCols}, 1fr)`,
+            gap: '4px',
+            alignContent: 'start',
+          }}
+        >
+          {sideItems.map(item =>
+            item.isLocal ? (
+              <LocalVideoCell
+                key={LOCAL_ID}
+                siteName={siteName}
+                focused={false}
+                onClick={() => handleClick(LOCAL_ID)}
+              />
+            ) : (
+              <VideoCell
+                key={item.id}
+                site={item.site!}
+                streamState={streamStatuses.find(s => s.siteId === item.id)}
+                focused={false}
+                onClick={() => handleClick(item.id)}
+              />
+            )
+          )}
         </div>
       </div>
     );

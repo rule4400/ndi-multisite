@@ -6,6 +6,7 @@ import { NDIEngine } from './ndi/ndiEngine';
 import { ConfigManager } from './config/configManager';
 import { AuthManager } from './auth/authManager';
 import { AudioEngine } from './audio/audioEngine';
+import { SyncManager } from './sync/syncManager';
 
 log.initialize();
 log.transports.file.level = 'info';
@@ -16,6 +17,7 @@ export const ndiEngine = new NDIEngine();
 export const configManager = new ConfigManager();
 export const authManager = new AuthManager();
 export const audioEngine = new AudioEngine();
+export const syncManager = new SyncManager(configManager);
 
 // Viteの開発サーバーポート（環境変数で上書き可能）
 const DEV_PORT = process.env.VITE_PORT ?? '5173';
@@ -99,10 +101,13 @@ app.whenReady().then(async () => {
   await ndiEngine.initialize(config, null);
   await createWindow();
   ndiEngine.setWindow(mainWindow!);
+  syncManager.setWindow(mainWindow!);
+  await syncManager.start();
 });
 
 app.on('before-quit', async () => {
   log.info('App shutting down...');
+  await syncManager.stop();
   await ndiEngine.shutdown();
   audioEngine.shutdown();
 });

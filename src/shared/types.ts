@@ -33,6 +33,12 @@ export interface AppConfig {
   ndiSourceName: string;
   discoveryServerIp: string;
   sites: Site[];
+  sync: {
+    mode: 'host' | 'client' | 'none'; // ホスト/クライアント/同期なし
+    hostIp: string;                    // クライアント側: ホストのIPアドレス
+    port: number;                      // HTTPサーバーポート（デフォルト: 34567）
+    intervalSec: number;               // ポーリング間隔（秒）
+  };
   video: {
     resolution: '1280x720' | '1920x1080';
     frameRate: 30 | 60;

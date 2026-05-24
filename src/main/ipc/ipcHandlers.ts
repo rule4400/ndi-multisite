@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, screen } from 'electron';
 import { IPC } from '../../shared/ipcChannels';
-import { ndiEngine, configManager, authManager, audioEngine } from '../index';
+import { ndiEngine, configManager, authManager, audioEngine, syncManager } from '../index';
 import { Site, UserRole } from '../../shared/types';
 
 export function setupIpcHandlers(window: BrowserWindow): void {
@@ -36,8 +36,12 @@ export function setupIpcHandlers(window: BrowserWindow): void {
     return configManager.get();
   });
 
-  ipcMain.handle(IPC.CONFIG_SET, (_e, partial: any) => {
+  ipcMain.handle(IPC.CONFIG_SET, async (_e, partial: any) => {
     configManager.set(partial);
+    // 同期設定が変わった場合はサーバー/クライアントを再起動
+    if (partial.sync) {
+      await syncManager.start();
+    }
   });
 
   ipcMain.handle(IPC.CONFIG_ADD_SITE, (_e, site: Site) => {
@@ -93,6 +97,15 @@ export function setupIpcHandlers(window: BrowserWindow): void {
       masterVolume: audioEngine.getMasterVolume(),
       siteVolumes: {},
     };
+  });
+
+  // --- Sync ---
+  ipcMain.handle('sync:now', async () => {
+    return syncManager.syncNow();
+  });
+
+  ipcMain.handle('sync:discoverHost', async (_e, port: number, subnet: string) => {
+    return syncManager.discoverHost(port, subnet);
   });
 
   // --- Stream ---

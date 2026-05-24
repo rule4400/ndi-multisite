@@ -55,6 +55,7 @@ export class NDISender {
         frameRateD: 1000,
         fourCC: this.grandiose.FOURCC_BGRA,
         pictureAspectRatio: this.width / this.height,
+        frameFormatType: this.grandiose.FORMAT_TYPE_PROGRESSIVE,
         data: Buffer.from(data.buffer),
         lineStrideBytes: this.width * 4,
       });
