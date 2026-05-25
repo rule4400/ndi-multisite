@@ -22,19 +22,18 @@ jobs:
           node-version: 20
           cache: npm
 
-      # タグ (v1.2.3) から "1.2.3" を取り出して package.json に書き込む
+      # タグから version を package.json に反映
       - name: Sync version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          echo "Setting version to $TAG"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
             pkg.version = '$TAG';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          cat package.json | grep '"version"'
+          echo "Version set to $TAG"
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -44,17 +43,19 @@ jobs:
       - name: Install setuptools
         run: pip install setuptools
 
-      # postinstall (electron-builder install-app-deps) をスキップして
-      # grandiose の NDI SDK 依存コンパイルエラーを回避
       - name: Install dependencies (skip native compile)
         run: npm ci --ignore-scripts
 
-      # keytar は認証に必要 → Electron 向けに再ビルド（prebuilt あり）
+      # macOS: libndi.dylib は grandiose パッケージに同梱済み → NDI SDK 不要
+      # electron-rebuild が libndi.dylib を build/Release/ にコピーしてリンクする
+      - name: Rebuild grandiose for Electron (macOS)
+        run: npx electron-rebuild -f -w @stagetimerio/grandiose
+        continue-on-error: true
+
       - name: Rebuild keytar for Electron
         run: npx electron-rebuild -f -w keytar
         continue-on-error: true
 
-      # GH_TOKEN を渡さない → electron-builder はビルドのみ・publishしない
       - name: Build & Package (macOS)
         run: npm run dist:mac -- --publish never
 
@@ -83,20 +84,19 @@ jobs:
           node-version: 20
           cache: npm
 
-      # タグ (v1.2.3) から "1.2.3" を取り出して package.json に書き込む
+      # タグから version を package.json に反映
       - name: Sync version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          echo "Setting version to $TAG"
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
             pkg.version = '$TAG';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          cat package.json | grep '"version"'
+          echo "Version set to $TAG"
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -109,13 +109,79 @@ jobs:
       - name: Install Visual Studio Build Tools
         uses: microsoft/setup-msbuild@v2
 
-      # postinstall をスキップして grandiose のコンパイルエラーを回避
       - name: Install dependencies (skip native compile)
         run: npm ci --ignore-scripts
         env:
           npm_config_msvs_version: "2022"
 
-      # keytar を Electron 向けに再ビルド
+      # NDI SDK for Windows をインストール
+      # → Processing.NDI.Lib.x64.dll / .lib を取得して grandiose の ndi/lib/win-x64/ に配置
+      - name: Install NDI SDK (Windows) and copy libs to grandiose
+        shell: powershell
+        run: |
+          $ndiFetch = "https://downloads.ndi.tv/SDK/NDI_SDK/NDISDKforWindows.exe"
+          $ndiInstaller = "$env:TEMP\NDI_SDK.exe"
+          $grandioseLib = "node_modules\@stagetimerio\grandiose\ndi\lib\win-x64"
+
+          Write-Host "Downloading NDI SDK..."
+          try {
+            Invoke-WebRequest $ndiFetch -OutFile $ndiInstaller -TimeoutSec 180
+          } catch {
+            Write-Host "Primary URL failed, trying fallback..."
+            # Fallback: NDI 5 SDK
+            Invoke-WebRequest "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%205%20SDK.exe" -OutFile $ndiInstaller -TimeoutSec 180
+          }
+
+          Write-Host "Installing NDI SDK silently..."
+          Start-Process $ndiInstaller -ArgumentList "/SILENT /NORESTART" -Wait -ErrorAction SilentlyContinue
+
+          # NDI SDK のインストール先を探索
+          $ndkPaths = @(
+            "C:\Program Files\NDI\NDI 6 SDK",
+            "C:\Program Files\NDI\NDI 5 SDK",
+            "C:\Program Files\NewTek\NDI SDK"
+          )
+          $ndkRoot = $null
+          foreach ($p in $ndkPaths) {
+            if (Test-Path $p) { $ndkRoot = $p; break }
+          }
+
+          if ($null -eq $ndkRoot) {
+            Write-Host "NDI SDK not found at expected paths, searching..."
+            $ndkRoot = (Get-ChildItem "C:\Program Files" -Directory | Where-Object { $_.Name -like "*NDI*" } | Select-Object -First 1).FullName
+          }
+
+          Write-Host "NDI SDK found at: $ndkRoot"
+
+          # grandiose の win-x64 ディレクトリを作成
+          New-Item -ItemType Directory -Force -Path $grandioseLib
+
+          # DLL と LIB をコピー
+          $srcBin = Join-Path $ndkRoot "Bin\x64"
+          $srcLib = Join-Path $ndkRoot "Lib\x64"
+
+          if (Test-Path $srcBin) {
+            Copy-Item "$srcBin\Processing.NDI.Lib.x64.dll" -Destination $grandioseLib -ErrorAction SilentlyContinue
+            Write-Host "Copied DLL from $srcBin"
+          }
+          if (Test-Path $srcLib) {
+            Copy-Item "$srcLib\Processing.NDI.Lib.x64.lib" -Destination $grandioseLib -ErrorAction SilentlyContinue
+            Write-Host "Copied LIB from $srcLib"
+          }
+
+          # 配置確認
+          Write-Host "Files in grandiose win-x64:"
+          Get-ChildItem $grandioseLib -ErrorAction SilentlyContinue
+        continue-on-error: true
+
+      # grandiose を Electron 向けにビルド（NDI SDK があれば DLL も build/Release/ にコピーされる）
+      - name: Rebuild grandiose for Electron (Windows)
+        run: npx electron-rebuild -f -w @stagetimerio/grandiose
+        continue-on-error: true
+        env:
+          npm_config_msvs_version: "2022"
+          GYP_MSVS_VERSION: "2022"
+
       - name: Rebuild keytar for Electron
         run: npx electron-rebuild -f -w keytar
         continue-on-error: true
@@ -123,7 +189,6 @@ jobs:
           npm_config_msvs_version: "2022"
           GYP_MSVS_VERSION: "2022"
 
-      # GH_TOKEN を渡さない → electron-builder はビルドのみ・publishしない
       - name: Build & Package (Windows)
         run: npm run dist:win -- --publish never
 
@@ -170,3 +235,5 @@ jobs:
             release/win/*.yml
           generate_release_notes: true
           draft: false
+          fail_on_unmatched_files: false
+          overwrite: true
