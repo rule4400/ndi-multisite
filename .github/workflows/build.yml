@@ -13,6 +13,7 @@ jobs:
   build-mac:
     name: Build macOS
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -75,6 +76,7 @@ jobs:
   build-win:
     name: Build Windows
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -115,27 +117,48 @@ jobs:
           npm_config_msvs_version: "2022"
 
       # NDI SDK for Windows をインストール
-      # → Processing.NDI.Lib.x64.dll / .lib を取得して grandiose の ndi/lib/win-x64/ に配置
+      # NSIS インストーラーなので無人フラグは /S（/SILENT は無効）
+      # curl を使用（Invoke-WebRequest より大幅に高速）
       - name: Install NDI SDK (Windows) and copy libs to grandiose
         shell: powershell
+        timeout-minutes: 10
         run: |
-          $ndiFetch = "https://downloads.ndi.tv/SDK/NDI_SDK/NDISDKforWindows.exe"
           $ndiInstaller = "$env:TEMP\NDI_SDK.exe"
           $grandioseLib = "node_modules\@stagetimerio\grandiose\ndi\lib\win-x64"
+          $urls = @(
+            "https://downloads.ndi.tv/SDK/NDI_SDK/NDISDKforWindows.exe",
+            "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%205%20SDK.exe"
+          )
 
-          Write-Host "Downloading NDI SDK..."
-          try {
-            Invoke-WebRequest $ndiFetch -OutFile $ndiInstaller -TimeoutSec 180
-          } catch {
-            Write-Host "Primary URL failed, trying fallback..."
-            # Fallback: NDI 5 SDK
-            Invoke-WebRequest "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%205%20SDK.exe" -OutFile $ndiInstaller -TimeoutSec 180
+          # curl で高速ダウンロード（タイムアウト90秒）
+          $downloaded = $false
+          foreach ($url in $urls) {
+            Write-Host "Downloading: $url"
+            try {
+              & curl.exe -L --max-time 90 --retry 2 -o $ndiInstaller $url
+              if ($LASTEXITCODE -eq 0 -and (Test-Path $ndiInstaller)) {
+                $downloaded = $true
+                break
+              }
+            } catch {
+              Write-Host "curl failed: $_"
+            }
           }
 
-          Write-Host "Installing NDI SDK silently..."
-          Start-Process $ndiInstaller -ArgumentList "/SILENT /NORESTART" -Wait -ErrorAction SilentlyContinue
+          if (-not $downloaded) {
+            Write-Host "NDI SDK download failed, skipping"
+            exit 0
+          }
 
-          # NDI SDK のインストール先を探索
+          # NSIS サイレントインストール（/S フラグ）、最大3分でタイムアウト
+          Write-Host "Installing NDI SDK silently..."
+          $proc = Start-Process $ndiInstaller -ArgumentList "/S /NORESTART" -PassThru -ErrorAction SilentlyContinue
+          if ($proc -and -not $proc.WaitForExit(180000)) {
+            Write-Host "NDI SDK installer timed out, killing process"
+            $proc.Kill()
+          }
+
+          # インストール先を探索
           $ndkPaths = @(
             "C:\Program Files\NDI\NDI 6 SDK",
             "C:\Program Files\NDI\NDI 5 SDK",
@@ -145,32 +168,30 @@ jobs:
           foreach ($p in $ndkPaths) {
             if (Test-Path $p) { $ndkRoot = $p; break }
           }
+          if ($null -eq $ndkRoot) {
+            $found = Get-ChildItem "C:\Program Files" -Directory -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Name -like "*NDI*" } | Select-Object -First 1
+            if ($found) { $ndkRoot = $found.FullName }
+          }
 
           if ($null -eq $ndkRoot) {
-            Write-Host "NDI SDK not found at expected paths, searching..."
-            $ndkRoot = (Get-ChildItem "C:\Program Files" -Directory | Where-Object { $_.Name -like "*NDI*" } | Select-Object -First 1).FullName
+            Write-Host "NDI SDK install directory not found, skipping DLL copy"
+            exit 0
           }
-
           Write-Host "NDI SDK found at: $ndkRoot"
 
-          # grandiose の win-x64 ディレクトリを作成
-          New-Item -ItemType Directory -Force -Path $grandioseLib
+          New-Item -ItemType Directory -Force -Path $grandioseLib | Out-Null
 
-          # DLL と LIB をコピー
           $srcBin = Join-Path $ndkRoot "Bin\x64"
           $srcLib = Join-Path $ndkRoot "Lib\x64"
-
-          if (Test-Path $srcBin) {
-            Copy-Item "$srcBin\Processing.NDI.Lib.x64.dll" -Destination $grandioseLib -ErrorAction SilentlyContinue
-            Write-Host "Copied DLL from $srcBin"
+          if (Test-Path "$srcBin\Processing.NDI.Lib.x64.dll") {
+            Copy-Item "$srcBin\Processing.NDI.Lib.x64.dll" -Destination $grandioseLib
+            Write-Host "Copied DLL"
           }
-          if (Test-Path $srcLib) {
-            Copy-Item "$srcLib\Processing.NDI.Lib.x64.lib" -Destination $grandioseLib -ErrorAction SilentlyContinue
-            Write-Host "Copied LIB from $srcLib"
+          if (Test-Path "$srcLib\Processing.NDI.Lib.x64.lib") {
+            Copy-Item "$srcLib\Processing.NDI.Lib.x64.lib" -Destination $grandioseLib
+            Write-Host "Copied LIB"
           }
-
-          # 配置確認
-          Write-Host "Files in grandiose win-x64:"
           Get-ChildItem $grandioseLib -ErrorAction SilentlyContinue
         continue-on-error: true
 
