@@ -25,14 +25,16 @@ export const IPC = {
   CONFIG_REMOVE_SITE:    'config:removeSite',
   CONFIG_GET_MONITORS:   'config:getMonitors',
 
-  UPDATE_CHECK:          'update:check',       // renderer → main: 手動チェック
-  UPDATE_INSTALL:        'update:install',     // renderer → main: 今すぐ再起動して適用
-  UPDATE_CHECKING:       'update:checking',    // main → renderer: チェック中
-  UPDATE_AVAILABLE:      'update:available',   // main → renderer: 新バージョンあり
-  UPDATE_NOT_AVAILABLE:  'update:notAvailable',// main → renderer: 最新版
-  UPDATE_PROGRESS:       'update:progress',    // main → renderer: ダウンロード進捗
-  UPDATE_DOWNLOADED:     'update:downloaded',  // main → renderer: ダウンロード完了
-  UPDATE_ERROR:          'update:error',       // main → renderer: エラー
+  UPDATE_CHECK:              'update:check',            // renderer → main: 手動チェック
+  UPDATE_DOWNLOAD:           'update:download',          // renderer → main: ダウンロード開始
+  UPDATE_INSTALL:            'update:install',           // renderer → main: 今すぐ再起動して適用
+  UPDATE_OPEN_RELEASE_PAGE:  'update:openReleasePage',   // renderer → main: GitHubリリースページを開く
+  UPDATE_CHECKING:           'update:checking',          // main → renderer: チェック中
+  UPDATE_AVAILABLE:          'update:available',         // main → renderer: 新バージョンあり
+  UPDATE_NOT_AVAILABLE:      'update:notAvailable',      // main → renderer: 最新版
+  UPDATE_PROGRESS:           'update:progress',          // main → renderer: ダウンロード進捗
+  UPDATE_DOWNLOADED:         'update:downloaded',        // main → renderer: ダウンロード完了
+  UPDATE_ERROR:              'update:error',             // main → renderer: エラー
 
   SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',  // renderer→main: ファイアウォール設定実行
   SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',     // main→renderer: 設定済みかどうか

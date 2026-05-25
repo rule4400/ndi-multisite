@@ -16,9 +16,11 @@ const IPC = {
   SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',
   SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',
   DEVICE_GET_CAMERAS:    'device:getCameras',
-  UPDATE_CHECK:          'update:check',
-  UPDATE_INSTALL:        'update:install',
-  UPDATE_CHECKING:       'update:checking',
+  UPDATE_CHECK:              'update:check',
+  UPDATE_DOWNLOAD:           'update:download',
+  UPDATE_INSTALL:            'update:install',
+  UPDATE_OPEN_RELEASE_PAGE:  'update:openReleasePage',
+  UPDATE_CHECKING:           'update:checking',
   UPDATE_AVAILABLE:      'update:available',
   UPDATE_NOT_AVAILABLE:  'update:notAvailable',
   UPDATE_PROGRESS:       'update:progress',
@@ -127,8 +129,12 @@ const api = {
   // Auto updater
   checkForUpdates: (): Promise<any> =>
     ipcRenderer.invoke(IPC.UPDATE_CHECK),
+  downloadUpdate: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
   installUpdate: (): Promise<void> =>
     ipcRenderer.invoke(IPC.UPDATE_INSTALL),
+  openReleasePage: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.UPDATE_OPEN_RELEASE_PAGE),
   onUpdateChecking:     (cb: () => void) => {
     const h = () => cb();
     ipcRenderer.on(IPC.UPDATE_CHECKING, h);
@@ -194,7 +200,9 @@ const api = {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   ...api,
-  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
+  getAppVersion:   (): Promise<string> => ipcRenderer.invoke('app:version'),
+  downloadUpdate:  (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
+  openReleasePage: (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_OPEN_RELEASE_PAGE),
 });
 
 export type ElectronAPI = typeof api;

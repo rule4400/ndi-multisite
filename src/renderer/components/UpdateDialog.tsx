@@ -1,17 +1,13 @@
 /**
  * UpdateDialog.tsx
  *
- * アップデート状態に応じて表示するモーダルダイアログ。
- *
  * 状態遷移:
- *   起動時自動チェック
- *     → available  : 「今すぐ更新」「後で」を選択
- *     → downloading: 進捗バー表示（キャンセル不可）
- *     → downloaded : 「再起動して更新」ボタン
- *     → error      : エラー内容表示
- *   手動チェック（設定タブから）
- *     → checking   : スピナー
- *     → not-available : 「最新版です」
+ *   checking → available → downloading → downloaded → (再起動)
+ *   checking → not-available
+ *   any      → error
+ *
+ * autoDownload=false のため、ユーザーが「今すぐ更新」を押したときにダウンロード開始。
+ * ダウンロード失敗 or macOS不可の場合は GitHub リリースページへ誘導。
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -44,23 +40,19 @@ export const UpdateDialog: React.FC<Props> = ({ autoMode, onClose }) => {
       }),
       (api as any).onUpdateAvailable?.((info: any) => {
         setState({ status: 'available', version: info.version, releaseNotes: info.releaseNotes });
-        setVisible(true); // 自動・手動どちらも表示
+        setVisible(true);
       }),
       (api as any).onUpdateNotAvailable?.((info: any) => {
         setState({ status: 'not-available', version: info.version });
-        if (!autoMode) setVisible(true); // 手動チェック時のみ表示
-        // 自動チェックの場合は最新版なら何も表示しない
+        if (!autoMode) setVisible(true);
       }),
       (api as any).onUpdateProgress?.((prog: any) => {
-        setState(prev => {
-          const version = (prev as any).version ?? '?';
-          return {
-            status: 'downloading',
-            version,
-            percent: Math.round(prog.percent ?? 0),
-            bytesPerSecond: prog.bytesPerSecond,
-          };
-        });
+        setState(prev => ({
+          status: 'downloading',
+          version: (prev as any).version ?? '?',
+          percent: Math.round(prog.percent ?? 0),
+          bytesPerSecond: prog.bytesPerSecond,
+        }));
         setVisible(true);
       }),
       (api as any).onUpdateDownloaded?.((info: any) => {
@@ -81,11 +73,24 @@ export const UpdateDialog: React.FC<Props> = ({ autoMode, onClose }) => {
     onClose?.();
   }, [onClose]);
 
+  const startDownload = useCallback(() => {
+    (api as any).downloadUpdate?.();
+    setState(prev => ({
+      status: 'downloading',
+      version: (prev as any).version ?? '?',
+      percent: 0,
+    }));
+  }, []);
+
+  const openReleasePage = useCallback(() => {
+    (api as any).openReleasePage?.();
+  }, []);
+
   if (!visible) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300]">
-      <div className="w-[440px] bg-gray-900 rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+      <div className="w-[460px] bg-gray-900 rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
 
         {/* ヘッダー */}
         <div className="px-6 pt-6 pb-4 border-b border-white/8">
@@ -118,13 +123,15 @@ export const UpdateDialog: React.FC<Props> = ({ autoMode, onClose }) => {
             <>
               <p className="text-white/70 text-sm">
                 バージョン <span className="text-white font-semibold">{state.version}</span> が利用可能です。
-                バックグラウンドでダウンロードを開始します。
               </p>
               {state.releaseNotes && typeof state.releaseNotes === 'string' && (
                 <div className="bg-white/5 rounded-lg p-3 text-xs text-white/50 max-h-24 overflow-y-auto">
                   {state.releaseNotes.replace(/<[^>]+>/g, '').trim()}
                 </div>
               )}
+              <p className="text-xs text-white/40">
+                「今すぐ更新」でダウンロードを開始します。ダウンロードできない場合は「GitHubで開く」から手動でインストーラーを入手してください。
+              </p>
             </>
           )}
 
@@ -168,70 +175,88 @@ export const UpdateDialog: React.FC<Props> = ({ autoMode, onClose }) => {
 
           {/* error */}
           {state.status === 'error' && (
-            <div className="space-y-2">
-              <p className="text-white/70 text-sm">アップデートの確認中にエラーが発生しました。</p>
+            <div className="space-y-3">
+              <p className="text-white/70 text-sm">アップデートの取得中にエラーが発生しました。</p>
               <p className="text-xs text-red-400/80 font-mono bg-red-950/40 rounded px-3 py-2 break-all">
                 {state.message}
+              </p>
+              <p className="text-xs text-white/40">
+                「GitHubで開く」から最新版のインストーラーを手動でダウンロードできます。
               </p>
             </div>
           )}
         </div>
 
         {/* フッターボタン */}
-        <div className="px-6 pb-6 flex justify-end gap-3">
+        <div className="px-6 pb-6 flex justify-between items-center">
 
-          {state.status === 'available' && (
-            <>
+          {/* 左: GitHubフォールバック（エラー時・available時） */}
+          <div>
+            {(state.status === 'available' || state.status === 'error' || state.status === 'not-available') && (
+              <button
+                onClick={openReleasePage}
+                className="text-xs text-white/40 hover:text-white/70 underline transition-colors"
+              >
+                GitHubで開く
+              </button>
+            )}
+          </div>
+
+          {/* 右: アクションボタン */}
+          <div className="flex gap-3">
+
+            {state.status === 'available' && (
+              <>
+                <button
+                  onClick={close}
+                  className="px-4 py-2 text-sm text-white/50 hover:text-white/80 transition-colors"
+                >
+                  後で
+                </button>
+                <button
+                  onClick={startDownload}
+                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+                >
+                  今すぐ更新
+                </button>
+              </>
+            )}
+
+            {state.status === 'downloading' && (
               <button
                 onClick={close}
                 className="px-4 py-2 text-sm text-white/50 hover:text-white/80 transition-colors"
               >
-                後で
+                バックグラウンドで続行
               </button>
-              {/* ダウンロードは自動開始しているため確認のみ */}
+            )}
+
+            {state.status === 'downloaded' && (
+              <>
+                <button
+                  onClick={close}
+                  className="px-4 py-2 text-sm text-white/50 hover:text-white/80 transition-colors"
+                >
+                  後で再起動
+                </button>
+                <button
+                  onClick={() => (api as any).installUpdate?.()}
+                  className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
+                >
+                  今すぐ再起動して更新
+                </button>
+              </>
+            )}
+
+            {(state.status === 'not-available' || state.status === 'error' || state.status === 'checking') && (
               <button
                 onClick={close}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+                className="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
               >
-                OK（バックグラウンドで継続）
+                閉じる
               </button>
-            </>
-          )}
-
-          {state.status === 'downloading' && (
-            <button
-              onClick={close}
-              className="px-4 py-2 text-sm text-white/50 hover:text-white/80 transition-colors"
-            >
-              バックグラウンドで続行
-            </button>
-          )}
-
-          {state.status === 'downloaded' && (
-            <>
-              <button
-                onClick={close}
-                className="px-4 py-2 text-sm text-white/50 hover:text-white/80 transition-colors"
-              >
-                後で再起動
-              </button>
-              <button
-                onClick={() => api.installUpdate()}
-                className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
-              >
-                今すぐ再起動して更新
-              </button>
-            </>
-          )}
-
-          {(state.status === 'not-available' || state.status === 'error' || state.status === 'checking') && (
-            <button
-              onClick={close}
-              className="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
-            >
-              閉じる
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -241,9 +266,7 @@ export const UpdateDialog: React.FC<Props> = ({ autoMode, onClose }) => {
 // ── アイコン ────────────────────────────────────────────────
 const UpdateIcon: React.FC<{ state: UpdateState['status'] }> = ({ state }) => {
   if (state === 'checking') {
-    return (
-      <div className="w-8 h-8 border-2 border-white/20 border-t-blue-400 rounded-full animate-spin" />
-    );
+    return <div className="w-8 h-8 border-2 border-white/20 border-t-blue-400 rounded-full animate-spin" />;
   }
   if (state === 'available' || state === 'downloading') {
     return (

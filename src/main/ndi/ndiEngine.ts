@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron';
+import * as os from 'os';
 import log from 'electron-log';
 import { NDISender } from './ndiSender';
 import { NDIReceiver } from './ndiReceiver';
@@ -14,6 +15,7 @@ export class NDIEngine {
   private window: BrowserWindow | null = null;
   private config: AppConfig | null = null;
   private senderEnabled = true;
+  private statusTimer: NodeJS.Timeout | null = null;
 
   async initialize(config: AppConfig, window: BrowserWindow | null): Promise<void> {
     this.config = config;
@@ -35,6 +37,9 @@ export class NDIEngine {
     // VPN環境ではDiscoveryブロードキャストが届かないため、起動時に全有効拠点へ直接接続を試みる
     setTimeout(() => this.connectAllEnabledSites(), 3000);
 
+    // エラー状態もUIに反映するため2秒ごとにステータスをブロードキャスト
+    this.statusTimer = setInterval(() => this.broadcastStatus(), 2000);
+
     // ネットワーク到達性チェック開始
     pingManager.start(config.sites);
     pingManager.onStatusChange((statuses) => {
@@ -42,14 +47,62 @@ export class NDIEngine {
     });
   }
 
+  /** 自機のローカルIPアドレス一覧を取得 */
+  private getLocalIPs(): Set<string> {
+    const ips = new Set<string>();
+    const ifaces = os.networkInterfaces();
+    for (const addrs of Object.values(ifaces)) {
+      for (const addr of addrs ?? []) {
+        if (addr.family === 'IPv4') ips.add(addr.address);
+      }
+    }
+    return ips;
+  }
+
+  /**
+   * 指定サイトが自拠点かどうか判定する。
+   * - NDIソース名が自分のものと一致する場合
+   * - IPアドレスが自機のネットワークインターフェースと一致する場合
+   */
+  private isSelfSite(site: Site): boolean {
+    if (!this.config) return false;
+    // NDIソース名が自分と同じ
+    if (site.ndiSourceName?.trim() && site.ndiSourceName.trim() === this.config.ndiSourceName?.trim()) {
+      return true;
+    }
+    // IPが自機のいずれかのNICと一致
+    const localIPs = this.getLocalIPs();
+    if (site.vpnIp?.trim() && localIPs.has(site.vpnIp.trim())) {
+      return true;
+    }
+    return false;
+  }
+
   /** 全有効拠点にVPN IPで直接接続（Discovery待ちなし） */
   private async connectAllEnabledSites(): Promise<void> {
     if (!this.config) return;
+    const localIPs = this.getLocalIPs();
+    log.info(`[NDI] ローカルIP: ${[...localIPs].join(', ')}`);
+
     for (const site of this.config.sites) {
       if (!site.enabled) continue;
-      if (this.receivers.has(site.id)) continue; // 既に接続済み
-      if (!site.vpnIp?.trim() && !site.ndiSourceName?.trim()) continue;
-      log.info(`Auto-connecting to site ${site.name} on startup`);
+      if (this.receivers.has(site.id)) continue;
+
+      // 自拠点はスキップ（自分の映像は LocalVideoCell で表示するため）
+      if (this.isSelfSite(site)) {
+        log.info(`[NDI] 自拠点スキップ: ${site.name} (NDI名="${site.ndiSourceName}" IP="${site.vpnIp}")`);
+        continue;
+      }
+
+      const ip = site.vpnIp?.trim();
+      const name = site.ndiSourceName?.trim();
+
+      // 無効IPをスキップ（0.0.0.0、空、ダミーIP）
+      if (!ip && !name) continue;
+      if (ip === '0.0.0.0' || ip === '127.0.0.1') continue;
+      if (ip && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) continue;
+
+      log.info(`[NDI] 自動接続: ${site.name} (${ip ?? name})`);
       await this.connectToSite(site).catch(e => log.warn(`Auto-connect failed for ${site.name}:`, e));
     }
   }
@@ -197,6 +250,7 @@ export class NDIEngine {
   }
 
   async shutdown(): Promise<void> {
+    if (this.statusTimer) { clearInterval(this.statusTimer); this.statusTimer = null; }
     this.sender.stop();
     for (const receiver of this.receivers.values()) {
       receiver.disconnect();

@@ -102,23 +102,55 @@ function setupAutoUpdater(): void {
   autoUpdater.logger = log;
   (autoUpdater.logger as any).transports.file.level = 'info';
 
-  // バックグラウンドで自動ダウンロード
-  autoUpdater.autoDownload = true;
+  // ユーザーが「今すぐ更新」を押したときにダウンロード開始（自動ダウンロードしない）
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+
+  // GitHub リリースページを開く URL
+  const RELEASE_URL = 'https://github.com/rule4400/ndi-multisite/releases/latest';
 
   const send = (channel: string, ...args: any[]) =>
     mainWindow?.webContents.send(channel, ...args);
 
-  autoUpdater.on('checking-for-update',   ()       => send(IPC.UPDATE_CHECKING));
-  autoUpdater.on('update-available',      (info)   => { log.info('Update available:', info.version); send(IPC.UPDATE_AVAILABLE, info); });
-  autoUpdater.on('update-not-available',  (info)   => { log.info('Already up-to-date:', info.version); send(IPC.UPDATE_NOT_AVAILABLE, info); });
-  autoUpdater.on('download-progress',     (prog)   => send(IPC.UPDATE_PROGRESS, prog));
-  autoUpdater.on('update-downloaded',     (info)   => { log.info('Update downloaded:', info.version); send(IPC.UPDATE_DOWNLOADED, info); });
-  autoUpdater.on('error',                 (err)    => { log.error('AutoUpdater error:', err); send(IPC.UPDATE_ERROR, err.message); });
+  autoUpdater.on('checking-for-update', () => {
+    log.info('[Updater] checking-for-update');
+    send(IPC.UPDATE_CHECKING);
+  });
+  autoUpdater.on('update-available', (info) => {
+    log.info('[Updater] update-available:', info.version, 'platform:', process.platform);
+    send(IPC.UPDATE_AVAILABLE, info);
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('[Updater] update-not-available. current:', app.getVersion(), 'latest:', info.version);
+    send(IPC.UPDATE_NOT_AVAILABLE, info);
+  });
+  autoUpdater.on('download-progress', (prog) => {
+    log.info(`[Updater] download-progress: ${Math.round(prog.percent)}%`);
+    send(IPC.UPDATE_PROGRESS, prog);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('[Updater] update-downloaded:', info.version);
+    send(IPC.UPDATE_DOWNLOADED, info);
+  });
+  autoUpdater.on('error', (err) => {
+    log.error('[Updater] error:', err.message);
+    send(IPC.UPDATE_ERROR, err.message);
+  });
 
   // renderer からの操作を受け付ける
-  ipcMain.handle(IPC.UPDATE_CHECK,   () => autoUpdater.checkForUpdates());
-  ipcMain.handle(IPC.UPDATE_INSTALL, () => { autoUpdater.quitAndInstall(false, true); });
+  ipcMain.handle(IPC.UPDATE_CHECK,    () => autoUpdater.checkForUpdates().catch(e => {
+    log.error('[Updater] checkForUpdates failed:', e);
+    send(IPC.UPDATE_ERROR, e.message);
+  }));
+  ipcMain.handle(IPC.UPDATE_DOWNLOAD, () => autoUpdater.downloadUpdate().catch(e => {
+    log.error('[Updater] downloadUpdate failed:', e);
+    send(IPC.UPDATE_ERROR, e.message);
+  }));
+  ipcMain.handle(IPC.UPDATE_INSTALL,  () => { autoUpdater.quitAndInstall(false, true); });
+  ipcMain.handle(IPC.UPDATE_OPEN_RELEASE_PAGE, async () => {
+    const { shell } = await import('electron');
+    shell.openExternal(RELEASE_URL);
+  });
 }
 
 app.whenReady().then(async () => {

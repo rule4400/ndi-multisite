@@ -28,7 +28,11 @@ export class NDIReceiver {
     this.running = true;
 
     try {
-      this.worker = new Worker(path.join(__dirname, 'receiverWorker.js'), {
+      // Worker Threads は asar 内のファイルを実行できないため
+      // asarUnpack で展開されたパスを使用する
+      const workerPath = path.join(__dirname, 'receiverWorker.js')
+        .replace(/app\.asar([/\\])/, 'app.asar.unpacked$1');
+      this.worker = new Worker(workerPath, {
         workerData: { source, siteId },
       });
 
@@ -47,6 +51,8 @@ export class NDIReceiver {
           log.error(`NDI Receiver [${siteId}] error:`, msg.error);
           this.lastError = msg.error;
           this.connected = false;
+        } else if (msg.type === 'log') {
+          log.info(`NDI Worker [${siteId}]: ${msg.message}`);
         } else if (msg.type === 'ready') {
           log.info(`NDI Receiver worker ready: ${source.name} -> ${siteId}`);
           // connected はまだ false のまま（フレーム受信時に true にする）
