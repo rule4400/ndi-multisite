@@ -209,6 +209,7 @@ jobs:
     needs: [build-mac, build-win]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -224,16 +225,26 @@ jobs:
           name: win-release
           path: release/win
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release/mac/*.dmg
-            release/mac/*.zip
-            release/mac/*.yml
-            release/win/*.exe
-            release/win/*.yml
-          generate_release_notes: true
-          draft: false
-          fail_on_unmatched_files: false
-          overwrite: true
+      - name: List downloaded files
+        run: find release -type f | sort
+
+      - name: Delete existing release (if any)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
+        shell: bash
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          FILES=$(find release -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.yml" \) | tr '\n' ' ')
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes \
+            $FILES
+        shell: bash
