@@ -8,12 +8,14 @@ on:
 
 jobs:
   # ══════════════════════════════════════════════
-  # macOS ビルド
+  # macOS ビルド & リリース
   # ══════════════════════════════════════════════
   build-mac:
     name: Build macOS
     runs-on: macos-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +50,6 @@ jobs:
         run: npm ci --ignore-scripts
 
       # macOS: libndi.dylib は grandiose パッケージに同梱済み → NDI SDK 不要
-      # electron-rebuild が libndi.dylib を build/Release/ にコピーしてリンクする
       - name: Rebuild grandiose for Electron (macOS)
         run: npx electron-rebuild -f -w @stagetimerio/grandiose
         continue-on-error: true
@@ -57,7 +58,16 @@ jobs:
         run: npx electron-rebuild -f -w keytar
         continue-on-error: true
 
-      - name: Build & Package (macOS)
+      # タグ push 時は GitHub Release に直接 publish
+      - name: Build & Publish (macOS) - tag push
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run dist:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # workflow_dispatch 時はローカル出力のみ
+      - name: Build only (macOS) - manual trigger
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: npm run dist:mac -- --publish never
 
       - name: Upload macOS artifacts
@@ -68,15 +78,18 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.yml
-          retention-days: 30
+          retention-days: 7
+          if-no-files-found: warn
 
   # ══════════════════════════════════════════════
-  # Windows ビルド
+  # Windows ビルド & リリース
   # ══════════════════════════════════════════════
   build-win:
     name: Build Windows
     runs-on: windows-latest
     timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -116,12 +129,10 @@ jobs:
         env:
           npm_config_msvs_version: "2022"
 
-      # NDI SDK for Windows をインストール
-      # NSIS インストーラーなので無人フラグは /S（/SILENT は無効）
-      # curl を使用（Invoke-WebRequest より大幅に高速）
+      # NDI SDK for Windows をインストール（DLL を grandiose に配置）
       - name: Install NDI SDK (Windows) and copy libs to grandiose
         shell: powershell
-        timeout-minutes: 10
+        timeout-minutes: 8
         run: |
           $ndiInstaller = "$env:TEMP\NDI_SDK.exe"
           $grandioseLib = "node_modules\@stagetimerio\grandiose\ndi\lib\win-x64"
@@ -130,58 +141,39 @@ jobs:
             "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%205%20SDK.exe"
           )
 
-          # curl で高速ダウンロード（タイムアウト90秒）
           $downloaded = $false
           foreach ($url in $urls) {
             Write-Host "Downloading: $url"
-            try {
-              & curl.exe -L --max-time 90 --retry 2 -o $ndiInstaller $url
-              if ($LASTEXITCODE -eq 0 -and (Test-Path $ndiInstaller)) {
-                $downloaded = $true
-                break
-              }
-            } catch {
-              Write-Host "curl failed: $_"
+            & curl.exe -L --max-time 90 --retry 2 -o $ndiInstaller $url
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $ndiInstaller)) {
+              $downloaded = $true; break
             }
           }
 
-          if (-not $downloaded) {
-            Write-Host "NDI SDK download failed, skipping"
-            exit 0
-          }
+          if (-not $downloaded) { Write-Host "NDI SDK download failed, skipping"; exit 0 }
 
-          # NSIS サイレントインストール（/S フラグ）、最大3分でタイムアウト
           Write-Host "Installing NDI SDK silently..."
           $proc = Start-Process $ndiInstaller -ArgumentList "/S /NORESTART" -PassThru -ErrorAction SilentlyContinue
           if ($proc -and -not $proc.WaitForExit(180000)) {
-            Write-Host "NDI SDK installer timed out, killing process"
-            $proc.Kill()
+            Write-Host "Installer timed out, killing"; $proc.Kill()
           }
 
-          # インストール先を探索
           $ndkPaths = @(
             "C:\Program Files\NDI\NDI 6 SDK",
             "C:\Program Files\NDI\NDI 5 SDK",
             "C:\Program Files\NewTek\NDI SDK"
           )
           $ndkRoot = $null
-          foreach ($p in $ndkPaths) {
-            if (Test-Path $p) { $ndkRoot = $p; break }
-          }
+          foreach ($p in $ndkPaths) { if (Test-Path $p) { $ndkRoot = $p; break } }
           if ($null -eq $ndkRoot) {
             $found = Get-ChildItem "C:\Program Files" -Directory -ErrorAction SilentlyContinue |
                      Where-Object { $_.Name -like "*NDI*" } | Select-Object -First 1
             if ($found) { $ndkRoot = $found.FullName }
           }
+          if ($null -eq $ndkRoot) { Write-Host "NDI SDK not found, skipping DLL copy"; exit 0 }
 
-          if ($null -eq $ndkRoot) {
-            Write-Host "NDI SDK install directory not found, skipping DLL copy"
-            exit 0
-          }
           Write-Host "NDI SDK found at: $ndkRoot"
-
           New-Item -ItemType Directory -Force -Path $grandioseLib | Out-Null
-
           $srcBin = Join-Path $ndkRoot "Bin\x64"
           $srcLib = Join-Path $ndkRoot "Lib\x64"
           if (Test-Path "$srcBin\Processing.NDI.Lib.x64.dll") {
@@ -195,7 +187,6 @@ jobs:
           Get-ChildItem $grandioseLib -ErrorAction SilentlyContinue
         continue-on-error: true
 
-      # grandiose を Electron 向けにビルド（NDI SDK があれば DLL も build/Release/ にコピーされる）
       - name: Rebuild grandiose for Electron (Windows)
         run: npx electron-rebuild -f -w @stagetimerio/grandiose
         continue-on-error: true
@@ -210,7 +201,16 @@ jobs:
           npm_config_msvs_version: "2022"
           GYP_MSVS_VERSION: "2022"
 
-      - name: Build & Package (Windows)
+      # タグ push 時は GitHub Release に直接 publish
+      - name: Build & Publish (Windows) - tag push
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # workflow_dispatch 時はローカル出力のみ
+      - name: Build only (Windows) - manual trigger
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: npm run dist:win -- --publish never
 
       - name: Upload Windows artifacts
@@ -220,72 +220,5 @@ jobs:
           path: |
             release/*.exe
             release/*.yml
-          retention-days: 30
-
-  # ══════════════════════════════════════════════
-  # GitHub Release 作成
-  # ══════════════════════════════════════════════
-  release:
-    name: Create GitHub Release
-    needs: [build-mac, build-win]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: mac-release
-          path: release/mac
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: win-release
-          path: release/win
-
-      - name: List downloaded files
-        run: find release -type f | sort
-
-      - name: Delete existing release (if any)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "Deleting existing release for tag: $TAG"
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>&1 || echo "No existing release to delete (OK)"
-          sleep 5
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -e
-          TAG="${GITHUB_REF#refs/tags/}"
-
-          # mapfile で配列に収集（クォート対応）
-          mapfile -t FILES < <(find release -type f \( \
-            -name "*.dmg" -o \
-            -name "*.zip" -o \
-            -name "*.exe" -o \
-            -name "*.yml" \
-          \))
-
-          echo "Release tag: $TAG"
-          echo "Files to upload (${#FILES[@]}):"
-          printf '  %s\n' "${FILES[@]}"
-
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "ERROR: No release files found!"
-            exit 1
-          fi
-
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "NDI Multisite $TAG" \
-            --generate-notes \
-            "${FILES[@]}"
+          retention-days: 7
+          if-no-files-found: warn
