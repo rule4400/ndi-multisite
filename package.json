@@ -6,9 +6,10 @@
   "main": "dist/main/index.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "concurrently \"vite --port 5173 --strictPort\" \"npm run build:main -- --watch\" \"wait-on http://localhost:5173 dist/main/index.js && cross-env NODE_ENV=development electron .\"",
-    "build": "vite build && npm run build:main",
+    "dev": "npm run copy:workers && concurrently \"vite --port 5173 --strictPort\" \"npm run build:main -- --watch\" \"wait-on http://localhost:5173 dist/main/index.js && cross-env NODE_ENV=development electron .\"",
+    "build": "vite build && npm run build:main && npm run copy:workers",
     "build:main": "tsc -p tsconfig.main.json",
+    "copy:workers": "node -e \"const fs=require('fs');fs.mkdirSync('dist/main/ndi',{recursive:true});fs.copyFileSync('src/main/ndi/receiverWorker.js','dist/main/ndi/receiverWorker.js');console.log('copied receiverWorker.js');\"",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "rebuild": "electron-rebuild",
