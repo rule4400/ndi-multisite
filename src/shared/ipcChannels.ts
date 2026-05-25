@@ -36,6 +36,8 @@ export const IPC = {
   UPDATE_DOWNLOADED:         'update:downloaded',        // main → renderer: ダウンロード完了
   UPDATE_ERROR:              'update:error',             // main → renderer: エラー
 
+  NDI_SDK_STATUS:            'ndi:sdkStatus',             // main→renderer: NDI SDK 利用可否
+
   SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',  // renderer→main: ファイアウォール設定実行
   SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',     // main→renderer: 設定済みかどうか
 

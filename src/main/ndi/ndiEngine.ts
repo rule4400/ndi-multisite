@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 import * as os from 'os';
 import log from 'electron-log';
+import { requireGrandiose } from './requireNative';
 import { NDISender } from './ndiSender';
 import { NDIReceiver } from './ndiReceiver';
 import { DiscoveryManager } from './discoveryManager';
@@ -17,9 +18,30 @@ export class NDIEngine {
   private senderEnabled = true;
   private statusTimer: NodeJS.Timeout | null = null;
 
+  /** NDI SDK（grandiose）が利用可能かチェックして結果を返す */
+  static checkNdiAvailable(): { available: boolean; error?: string } {
+    try {
+      requireGrandiose();
+      return { available: true };
+    } catch (err: any) {
+      log.warn('[NDI] SDK not available:', err.message);
+      return { available: false, error: err.message };
+    }
+  }
+
   async initialize(config: AppConfig, window: BrowserWindow | null): Promise<void> {
     this.config = config;
     this.window = window;
+
+    // NDI SDK 利用可能チェック → renderer に通知
+    const ndiCheck = NDIEngine.checkNdiAvailable();
+    if (!ndiCheck.available) {
+      log.warn('[NDI] NDI SDK not found. Users need to install NDI Runtime.');
+    }
+    // window が準備できたら通知（createWindow より後に呼ばれる場合もあるため遅延）
+    setTimeout(() => {
+      this.window?.webContents.send(IPC.NDI_SDK_STATUS, ndiCheck);
+    }, 2000);
 
     await this.discovery.start(config.discoveryServerIp || undefined);
 

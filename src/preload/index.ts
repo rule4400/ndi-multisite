@@ -13,6 +13,7 @@ const IPC = {
   STREAM_PUSH_AUDIO:     'stream:pushAudio',
   STREAM_AUDIO_FRAME:        'stream:audioFrame',
   STREAM_NETWORK_STATUS:     'stream:networkStatus',
+  NDI_SDK_STATUS:            'ndi:sdkStatus',
   SYSTEM_CONFIGURE_FIREWALL: 'system:configureFirewall',
   SYSTEM_FIREWALL_STATUS:    'system:firewallStatus',
   DEVICE_GET_CAMERAS:    'device:getCameras',
@@ -191,6 +192,12 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.STREAM_AUDIO_FRAME, h);
   },
 
+  onNdiSdkStatus: (cb: (status: { available: boolean; error?: string }) => void) => {
+    const h = (_: any, status: any) => cb(status);
+    ipcRenderer.on(IPC.NDI_SDK_STATUS, h);
+    return () => ipcRenderer.removeListener(IPC.NDI_SDK_STATUS, h);
+  },
+
   onConfigUpdate: (callback: (config: AppConfig) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, config: AppConfig) => callback(config);
     ipcRenderer.on(IPC.CONFIG_GET, handler);
@@ -200,9 +207,10 @@ const api = {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   ...api,
-  getAppVersion:   (): Promise<string> => ipcRenderer.invoke('app:version'),
-  downloadUpdate:  (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
-  openReleasePage: (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_OPEN_RELEASE_PAGE),
+  getAppVersion:    (): Promise<string> => ipcRenderer.invoke('app:version'),
+  downloadUpdate:   (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_DOWNLOAD),
+  openReleasePage:  (): Promise<void>   => ipcRenderer.invoke(IPC.UPDATE_OPEN_RELEASE_PAGE),
+  openExternalUrl:  (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
 });
 
 export type ElectronAPI = typeof api;

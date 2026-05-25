@@ -14,7 +14,8 @@
   ],
   "win": {
     "target": [{ "target": "nsis", "arch": ["x64"] }],
-    "icon": "assets/icon.png"
+    "icon": "assets/icon.png",
+    "artifactName": "NDI-Multisite-Setup-${version}.${ext}"
   },
   "mac": {
     "target": [
@@ -23,13 +24,18 @@
     ],
     "icon": "assets/icon.png",
     "hardenedRuntime": false,
-    "gatekeeperAssess": false
+    "gatekeeperAssess": false,
+    "artifactName": "NDI-Multisite-${version}-${arch}.${ext}"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "include": "installer.nsh"
   },
+  "asarUnpack": [
+    "dist/main/ndi/receiverWorker.js",
+    "node_modules/@stagetimerio/grandiose/**/*"
+  ],
   "npmRebuild": true,
   "buildDependenciesFromSource": false,
   "publish": {

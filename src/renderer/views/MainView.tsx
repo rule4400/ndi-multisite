@@ -4,6 +4,7 @@ import { ControlPanel } from '../components/ControlPanel';
 import { SettingsView } from './SettingsView';
 import { UpdateDialog } from '../components/UpdateDialog';
 import { NetworkDiagPanel } from '../components/NetworkDiagPanel';
+import { NdiInstallDialog } from '../components/NdiInstallDialog';
 import { useStreamStore } from '../stores/useStreamStore';
 import { useConfigStore } from '../stores/useConfigStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -13,9 +14,10 @@ import { audioPlayer } from '../audio/AudioPlayer';
 import { api } from '../bridge/api';
 
 export const MainView: React.FC = () => {
-  const [showSettings, setShowSettings] = useState(false);
-  const [showDiag,     setShowDiag]     = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showSettings,    setShowSettings]    = useState(false);
+  const [showDiag,        setShowDiag]        = useState(false);
+  const [isFullscreen,    setIsFullscreen]    = useState(false);
+  const [showNdiInstall,  setShowNdiInstall]  = useState(false);
 
   const { statuses, init: initStream } = useStreamStore();
   const { config, init: initConfig }   = useConfigStore();
@@ -30,6 +32,11 @@ export const MainView: React.FC = () => {
     initDevice();
     const unsubNetwork = initNetwork();
 
+    // NDI SDK 利用可否チェック
+    const unsubNdi = (api as any).onNdiSdkStatus?.((status: { available: boolean; error?: string }) => {
+      if (!status.available) setShowNdiInstall(true);
+    });
+
     // AudioPlayer初期化 + NDI受信音声をリアルタイム再生
     audioPlayer.initialize();
     const unsubAudio = (api as any).onAudioFrame?.((frame: {
@@ -42,6 +49,7 @@ export const MainView: React.FC = () => {
     return () => {
       unsubNetwork?.();
       unsubAudio?.();
+      unsubNdi?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -142,6 +150,9 @@ export const MainView: React.FC = () => {
       )}
 
       {showSettings && <SettingsView onClose={() => setShowSettings(false)} />}
+
+      {/* NDI Runtime 未インストール案内 */}
+      {showNdiInstall && <NdiInstallDialog onClose={() => setShowNdiInstall(false)} />}
     </div>
   );
 };

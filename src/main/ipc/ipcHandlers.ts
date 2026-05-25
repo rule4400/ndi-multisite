@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, screen, app } from 'electron';
+import { ipcMain, BrowserWindow, screen, app, shell } from 'electron';
 import { IPC } from '../../shared/ipcChannels';
 import { ndiEngine, configManager, authManager, audioEngine, syncManager } from '../index';
 import { firewallManager } from '../system/firewallManager';
@@ -8,6 +8,7 @@ export function setupIpcHandlers(window: BrowserWindow): void {
 
   // --- App Info ---
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
 
   // --- System ---
   ipcMain.handle(IPC.SYSTEM_CONFIGURE_FIREWALL, () => firewallManager.configure());

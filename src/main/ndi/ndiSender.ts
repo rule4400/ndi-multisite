@@ -1,4 +1,5 @@
 import log from 'electron-log';
+import { requireGrandiose } from './requireNative';
 
 export class NDISender {
   private sender: any = null;
@@ -26,7 +27,7 @@ export class NDISender {
     this.height = h;
 
     try {
-      this.grandiose = require('@stagetimerio/grandiose');
+      this.grandiose = requireGrandiose();
       this.sender = await this.grandiose.send({
         name: sourceName,
         clockVideo: true,

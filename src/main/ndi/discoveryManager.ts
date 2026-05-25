@@ -1,5 +1,6 @@
 import log from 'electron-log';
 import { NDISource } from '../../shared/types';
+import { requireGrandiose } from './requireNative';
 
 type SourceCallback = (source: NDISource) => void;
 
@@ -12,7 +13,7 @@ export class DiscoveryManager {
 
   async start(discoveryServerIp?: string): Promise<void> {
     try {
-      const grandiose = require('@stagetimerio/grandiose');
+      const grandiose = requireGrandiose();
       const opts: any = { showLocalSources: true };
       if (discoveryServerIp) opts.extraIps = discoveryServerIp;
 
