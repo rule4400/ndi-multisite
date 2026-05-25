@@ -39,22 +39,25 @@ export class NDIEngine {
       log.warn('[NDI] NDI SDK not found. Users need to install NDI Runtime.');
     }
     // window が準備できたら通知（createWindow より後に呼ばれる場合もあるため遅延）
-    setTimeout(() => {
-      this.window?.webContents.send(IPC.NDI_SDK_STATUS, ndiCheck);
-    }, 2000);
+    setTimeout(() => this.send(IPC.NDI_SDK_STATUS, ndiCheck), 2000);
 
     await this.discovery.start(config.discoveryServerIp || undefined);
 
     this.discovery.onSourceAdded((source) => {
       log.info('NDI Source added:', source.name);
-      this.window?.webContents.send(IPC.STREAM_SOURCE_LIST, this.discovery.getSources());
+      this.send(IPC.STREAM_SOURCE_LIST, this.discovery.getSources());
       this.tryAutoConnect(source);
     });
 
     this.discovery.onSourceRemoved((source) => {
       log.info('NDI Source removed:', source.name);
-      this.window?.webContents.send(IPC.STREAM_SOURCE_LIST, this.discovery.getSources());
+      this.send(IPC.STREAM_SOURCE_LIST, this.discovery.getSources());
     });
+
+    // NDI 送信を開始（他拠点から自拠点が見えるようにする）
+    if (ndiCheck.available) {
+      this.startSender().catch(e => log.warn('[NDI] startSender failed:', e));
+    }
 
     // VPN環境ではDiscoveryブロードキャストが届かないため、起動時に全有効拠点へ直接接続を試みる
     setTimeout(() => this.connectAllEnabledSites(), 3000);
@@ -65,7 +68,7 @@ export class NDIEngine {
     // ネットワーク到達性チェック開始
     pingManager.start(config.sites);
     pingManager.onStatusChange((statuses) => {
-      this.window?.webContents.send(IPC.STREAM_NETWORK_STATUS, statuses);
+      this.send(IPC.STREAM_NETWORK_STATUS, statuses);
     });
   }
 
@@ -219,8 +222,7 @@ export class NDIEngine {
       ndiSource,
       site.id,
       (frameData, w, h) => {
-        if (!this.window) return;
-        this.window.webContents.send(IPC.STREAM_VIDEO_FRAME, {
+        this.send(IPC.STREAM_VIDEO_FRAME, {
           siteId: site.id,
           width: w,
           height: h,
@@ -229,10 +231,9 @@ export class NDIEngine {
         });
       },
       (samples, sampleRate, channels) => {
-        if (!this.window) return;
-        this.window.webContents.send(IPC.STREAM_AUDIO_FRAME, {
+        this.send(IPC.STREAM_AUDIO_FRAME, {
           siteId: site.id,
-          data: Array.from(samples), // Float32Array → plain array for IPC serialization
+          data: Array.from(samples),
           sampleRate,
           channels,
         });
@@ -266,9 +267,13 @@ export class NDIEngine {
     return this.discovery.getSources();
   }
 
+  private send(channel: string, ...args: any[]): void {
+    if (!this.window || this.window.isDestroyed()) return;
+    try { this.window.webContents.send(channel, ...args); } catch (_) {}
+  }
+
   private broadcastStatus(): void {
-    if (!this.window) return;
-    this.window.webContents.send(IPC.STREAM_STATUS_UPDATE, this.getStreamStatuses());
+    this.send(IPC.STREAM_STATUS_UPDATE, this.getStreamStatuses());
   }
 
   async shutdown(): Promise<void> {

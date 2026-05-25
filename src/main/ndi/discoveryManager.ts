@@ -25,6 +25,7 @@ export class DiscoveryManager {
     }
   }
 
+  private pollCount = 0;
   private async poll(): Promise<void> {
     if (!this.finder) return;
     try {
@@ -32,11 +33,26 @@ export class DiscoveryManager {
       const prevNames = new Set(this.sources.map((s: NDISource) => s.name));
       const currNames = new Set(found.map((s: NDISource) => s.name));
 
+      // 10秒ごとに検出中のソースをログ出力
+      if (++this.pollCount % 5 === 0) {
+        if (found.length > 0) {
+          log.info(`[NDI Discovery] 検出中ソース(${found.length}件): ${found.map(s => `"${s.name}" (${s.urlAddress})`).join(', ')}`);
+        } else {
+          log.info('[NDI Discovery] NDIソースが見つかりません（LAN上に他の拠点がいないか、NDIが起動していません）');
+        }
+      }
+
       for (const s of found) {
-        if (!prevNames.has(s.name)) this.addedCallbacks.forEach(cb => cb(s));
+        if (!prevNames.has(s.name)) {
+          log.info(`[NDI Discovery] ソース追加: "${s.name}" (${s.urlAddress})`);
+          this.addedCallbacks.forEach(cb => cb(s));
+        }
       }
       for (const s of this.sources) {
-        if (!currNames.has(s.name)) this.removedCallbacks.forEach(cb => cb(s));
+        if (!currNames.has(s.name)) {
+          log.info(`[NDI Discovery] ソース消失: "${s.name}"`);
+          this.removedCallbacks.forEach(cb => cb(s));
+        }
       }
       this.sources = found;
     } catch (err) {
