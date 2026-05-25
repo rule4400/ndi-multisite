@@ -251,21 +251,41 @@ jobs:
 
       - name: Delete existing release (if any)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
-        shell: bash
+          echo "Deleting existing release for tag: $TAG"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>&1 || echo "No existing release to delete (OK)"
+          sleep 5
 
       - name: Create GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
+          set -e
           TAG="${GITHUB_REF#refs/tags/}"
-          FILES=$(find release -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.yml" \) | tr '\n' ' ')
+
+          # mapfile で配列に収集（クォート対応）
+          mapfile -t FILES < <(find release -type f \( \
+            -name "*.dmg" -o \
+            -name "*.zip" -o \
+            -name "*.exe" -o \
+            -name "*.yml" \
+          \))
+
+          echo "Release tag: $TAG"
+          echo "Files to upload (${#FILES[@]}):"
+          printf '  %s\n' "${FILES[@]}"
+
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "ERROR: No release files found!"
+            exit 1
+          fi
+
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "$TAG" \
+            --title "NDI Multisite $TAG" \
             --generate-notes \
-            $FILES
-        shell: bash
+            "${FILES[@]}"
