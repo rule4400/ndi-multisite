@@ -40,7 +40,7 @@ export const MainView: React.FC = () => {
     // AudioPlayer初期化 + NDI受信音声をリアルタイム再生
     audioPlayer.initialize();
     const unsubAudio = (api as any).onAudioFrame?.((frame: {
-      siteId: string; data: number[]; sampleRate: number; channels: number;
+      siteId: string; data: Float32Array | number[]; sampleRate: number; channels: number;
     }) => {
       audioPlayer.resume();
       audioPlayer.playChunk(frame.siteId, frame);

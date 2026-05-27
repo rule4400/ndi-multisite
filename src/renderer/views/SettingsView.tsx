@@ -111,6 +111,8 @@ interface SiteFormValues {
 const EMPTY_FORM: SiteFormValues = { name: '', ndiSourceName: '', vpnIp: '', enabled: true };
 
 // ── フォーム（追加・編集共通）──────────────────────────
+// NDIソース名は内部で自動生成するためフォームから外し、
+// 上級ユーザーが既存のNDIソースに紐付けたい場合のみ「詳細設定」で指定可能。
 const SiteForm: React.FC<{
   initial?: SiteFormValues;
   onSave: (v: SiteFormValues) => void;
@@ -118,10 +120,13 @@ const SiteForm: React.FC<{
   submitLabel: string;
 }> = ({ initial = EMPTY_FORM, onSave, onCancel, submitLabel }) => {
   const [v, setV] = useState<SiteFormValues>(initial);
+  const [showAdvanced, setShowAdvanced] = useState(!!initial.ndiSourceName);
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => { nameRef.current?.focus(); }, []);
 
   const inputCls = 'w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500 transition-colors';
+
+  const ipValid = !v.vpnIp || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v.vpnIp);
 
   return (
     <div className="space-y-2">
@@ -133,31 +138,54 @@ const SiteForm: React.FC<{
             placeholder="例: 本部" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs text-white/50 mb-1">VPN IPアドレス</label>
+          <label className="block text-xs text-white/50 mb-1">
+            IPアドレス <span className="text-red-400">*</span>
+          </label>
           <input value={v.vpnIp}
             onChange={e => setV(p => ({ ...p, vpnIp: e.target.value }))}
-            placeholder="例: 10.0.0.1" className={inputCls} />
+            placeholder="例: 192.168.1.10"
+            className={`${inputCls} ${!ipValid && v.vpnIp ? 'border-red-500/50' : ''}`} />
+          {!ipValid && v.vpnIp && (
+            <p className="text-xs text-red-400 mt-0.5">正しい IP アドレスを入力してください</p>
+          )}
         </div>
       </div>
-      <div>
-        <label className="block text-xs text-white/50 mb-1">
-          NDIソース名
-          <span className="ml-1.5 text-white/30 font-normal">（空欄の場合はVPN IPから自動検出）</span>
-        </label>
-        <input value={v.ndiSourceName}
-          onChange={e => setV(p => ({ ...p, ndiSourceName: e.target.value }))}
-          placeholder="例: HQ-Camera（省略可）" className={inputCls} />
-      </div>
+
       <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer select-none">
         <input type="checkbox" checked={v.enabled}
           onChange={e => setV(p => ({ ...p, enabled: e.target.checked }))}
           className="w-4 h-4 accent-blue-500" />
         接続を有効にする
       </label>
+
+      {/* 詳細設定（NDIソース名の手動指定） */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced(s => !s)}
+        className="text-xs text-white/40 hover:text-white/70 underline transition-colors"
+      >
+        {showAdvanced ? '▾ 詳細設定を閉じる' : '▸ 詳細設定（通常は不要）'}
+      </button>
+      {showAdvanced && (
+        <div className="bg-white/5 rounded p-2.5 space-y-1">
+          <label className="block text-xs text-white/50">
+            NDIソース名
+            <span className="ml-1.5 text-white/30 font-normal">（空欄: 自動）</span>
+          </label>
+          <input value={v.ndiSourceName}
+            onChange={e => setV(p => ({ ...p, ndiSourceName: e.target.value }))}
+            placeholder="例: MacBook-Pro (本部)" className={inputCls} />
+          <p className="text-xs text-white/30 leading-relaxed">
+            通常は空欄で OK。IPアドレスと拠点名から自動検出します。<br />
+            既存の NDI ソースに明示的に接続したい場合のみ指定してください。
+          </p>
+        </div>
+      )}
+
       <div className="flex gap-2 pt-1">
         <button
-          onClick={() => { if (v.name) onSave(v); }}
-          disabled={!v.name}
+          onClick={() => { if (v.name && ipValid) onSave(v); }}
+          disabled={!v.name || !ipValid}
           className="flex-1 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
         >
           {submitLabel}
@@ -271,6 +299,7 @@ const SourceSelector: React.FC<{
 // ── 拠点行 ──────────────────────────────────────────────
 const SiteRow: React.FC<{
   site: Site;
+  isSelf?: boolean;
   readonly: boolean;
   sources: NDISource[];
   streamStatus?: { connected: boolean };
@@ -281,7 +310,7 @@ const SiteRow: React.FC<{
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
-}> = ({ site, readonly, sources, streamStatus, onUpdate, onRemove, onConnect, onDisconnect,
+}> = ({ site, isSelf, readonly, sources, streamStatus, onUpdate, onRemove, onConnect, onDisconnect,
         onDragStart, onDragOver, onDrop }) => {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -306,7 +335,10 @@ const SiteRow: React.FC<{
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className="group flex items-center gap-2.5 bg-white/5 hover:bg-white/8 rounded-lg px-3 py-2.5 transition-colors"
+      className={`group flex items-center gap-2.5 rounded-lg px-3 py-2.5 transition-colors
+        ${isSelf
+          ? 'bg-blue-900/30 hover:bg-blue-900/40 border border-blue-500/30'
+          : 'bg-white/5 hover:bg-white/8'}`}
     >
       {/* ドラッグハンドル */}
       {!readonly && (
@@ -337,6 +369,11 @@ const SiteRow: React.FC<{
           <span className={`text-sm font-medium truncate ${site.enabled ? 'text-white' : 'text-white/40'}`}>
             {site.name}
           </span>
+          {isSelf && (
+            <span className="text-[10px] uppercase tracking-wide text-blue-300 bg-blue-500/20 px-1.5 py-0.5 rounded shrink-0">
+              この PC
+            </span>
+          )}
           {!site.enabled && (
             <span className="text-xs text-white/30 bg-white/10 px-1.5 py-0.5 rounded shrink-0">無効</span>
           )}
@@ -348,8 +385,8 @@ const SiteRow: React.FC<{
         </div>
       </div>
 
-      {/* NDIソース選択 */}
-      {site.enabled && (
+      {/* NDIソース選択（自拠点では非表示） */}
+      {site.enabled && !isSelf && (
         <SourceSelector
           site={site}
           sources={sources}
@@ -409,12 +446,14 @@ const SiteRow: React.FC<{
 
 // ── 拠点タブ本体 ─────────────────────────────────────────
 const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
-  const { config, addSite, removeSite, updateSite, reorderSites } = useConfigStore();
+  const { config, addSite, removeSite, updateSite, reorderSites, setConfig } = useConfigStore();
   const { statuses, sources } = useStreamStore();
   const [showAdd, setShowAdd] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  const sites = config?.sites ?? [];
+  const sites      = config?.sites ?? [];
+  const selfSiteId = config?.selfSiteId ?? null;
+  const selfSite   = sites.find(s => s.id === selfSiteId);
 
   const handleAdd = async (v: SiteFormValues) => {
     const site: Site = { id: crypto.randomUUID(), ...v };
@@ -438,8 +477,36 @@ const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
     <div className="space-y-3">
       <SectionHeader
         title="接続拠点"
-        description="各拠点のNDIストリームを管理します。VPN IPを設定すると映像を自動検出します。"
+        description="各拠点のIPアドレスを登録してください。NDIソース名は自動で検出します。"
       />
+
+      {/* 自拠点選択 */}
+      <div className="bg-blue-950/30 border border-blue-500/30 rounded-lg p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <div className="text-sm text-blue-200 font-medium">この PC の拠点</div>
+            <div className="text-xs text-blue-300/60 mt-0.5">
+              この設定が「自分自身」を識別します（自拠点へは接続しません）
+            </div>
+          </div>
+        </div>
+        <select
+          disabled={readonly}
+          value={selfSiteId ?? ''}
+          onChange={e => setConfig({ selfSiteId: e.target.value || null })}
+          className="w-full px-3 py-2 rounded bg-gray-800 text-white text-sm border border-white/10 outline-none focus:border-blue-500 disabled:opacity-50"
+        >
+          <option value="">— 未設定（IP で自動判定） —</option>
+          {sites.map(s => (
+            <option key={s.id} value={s.id}>{s.name}{s.vpnIp ? ` (${s.vpnIp})` : ''}</option>
+          ))}
+        </select>
+        {selfSite && (
+          <div className="text-xs text-blue-300/70 mt-1.5">
+            ✓ NDI 送信名: <span className="font-mono">{selfSite.name}</span>
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-white/35">
@@ -464,6 +531,7 @@ const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
           <SiteRow
             key={site.id}
             site={site}
+            isSelf={site.id === selfSiteId}
             readonly={readonly}
             sources={sources}
             streamStatus={statuses.find(s => s.siteId === site.id)}
@@ -498,31 +566,37 @@ const SitesTab: React.FC<{ readonly: boolean }> = ({ readonly }) => {
 // ════════════════════════════════════════════════════════
 const NetworkTab: React.FC = () => {
   const { config, setConfig } = useConfigStore();
-  const [siteName, setSiteName] = useState(config?.siteName ?? '');
   const [ip, setIp] = useState(config?.discoveryServerIp ?? '');
-  const [ndiName, setNdiName] = useState(config?.ndiSourceName ?? '');
+
+  // この PC の自拠点名 = selfSite.name（参照のみ表示）
+  const selfSite = config?.sites.find(s => s.id === config?.selfSiteId);
 
   return (
     <div className="space-y-5">
-      <SectionHeader title="ネットワーク設定" description="自拠点の配信名・NDI Discovery サーバーの設定を行います。" />
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="自拠点名">
-          <input value={siteName} onChange={e => setSiteName(e.target.value)}
-            onBlur={() => setConfig({ siteName })}
-            placeholder="例: 本部" className="input" />
-        </Field>
-        <Field label="自拠点 NDI ソース名">
-          <input value={ndiName} onChange={e => setNdiName(e.target.value)}
-            onBlur={() => setConfig({ ndiSourceName: ndiName })}
-            placeholder="例: NDI-Multisite-Local" className="input" />
-        </Field>
+      <SectionHeader
+        title="ネットワーク設定"
+        description="NDI Discovery サーバーなどのネットワーク詳細設定を行います。"
+      />
+
+      {/* 自拠点情報（読み取り） */}
+      <div className="bg-white/5 rounded-lg p-3 space-y-1">
+        <p className="text-xs text-white/40">この PC の拠点</p>
+        <p className="text-white text-sm font-medium">
+          {selfSite ? selfSite.name : '未設定'}
+        </p>
+        <p className="text-xs text-white/30">
+          {selfSite
+            ? `拠点設定タブの「この PC の拠点」で変更できます`
+            : `拠点設定タブで「この PC の拠点」を選択してください`}
+        </p>
       </div>
-      <Field label="NDI Discovery Server IP">
+
+      <Field label="NDI Discovery Server IP（任意）">
         <input value={ip} onChange={e => setIp(e.target.value)}
           onBlur={() => setConfig({ discoveryServerIp: ip })}
           placeholder="例: 10.0.0.100（省略可）" className="input" />
         <p className="text-xs text-white/30 mt-1">
-          Discovery Server を使わない場合は空欄のままにしてください。
+          異なるサブネットの拠点も検出したい場合に Discovery Server の IP を入力します。
         </p>
       </Field>
     </div>
@@ -534,31 +608,91 @@ const NetworkTab: React.FC = () => {
 // ════════════════════════════════════════════════════════
 const VideoTab: React.FC = () => {
   const { config, setConfig } = useConfigStore();
+  const bw = config?.video.receiveBandwidth ?? 'lowest';
 
   return (
     <div className="space-y-5">
-      <SectionHeader title="映像品質" description="自拠点から送信する映像の解像度とフレームレートを設定します。" />
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="解像度">
-          <select
-            value={config?.video.resolution}
-            onChange={e => setConfig({ video: { ...config!.video, resolution: e.target.value as any } })}
-            className="input"
+      <SectionHeader
+        title="映像品質"
+        description="送信する映像の解像度・フレームレート、および受信する映像の帯域モードを設定します。"
+      />
+
+      {/* 受信帯域モード */}
+      <div className="space-y-2">
+        <label className="block text-sm text-white/70 font-medium">受信モード</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setConfig({ video: { ...config!.video, receiveBandwidth: 'lowest' } })}
+            className={`text-left px-4 py-3 rounded-lg border transition-colors
+              ${bw === 'lowest'
+                ? 'border-blue-500 bg-blue-950/40 text-white'
+                : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'}`}
           >
-            <option value="1280x720">720p (1280×720)</option>
-            <option value="1920x1080">1080p (1920×1080)</option>
-          </select>
-        </Field>
-        <Field label="フレームレート">
-          <select
-            value={config?.video.frameRate}
-            onChange={e => setConfig({ video: { ...config!.video, frameRate: Number(e.target.value) as any } })}
-            className="input"
+            <div className="font-medium text-sm flex items-center gap-2">
+              {bw === 'lowest' && <span className="text-blue-400">●</span>}
+              NDI HX（低帯域・推奨）
+            </div>
+            <div className="text-xs text-white/40 mt-1">
+              プロキシ低解像度モード。VPN・常時接続に最適。<br/>
+              帯域: 約 8–20 Mbps
+            </div>
+          </button>
+          <button
+            onClick={() => setConfig({ video: { ...config!.video, receiveBandwidth: 'highest' } })}
+            className={`text-left px-4 py-3 rounded-lg border transition-colors
+              ${bw === 'highest'
+                ? 'border-blue-500 bg-blue-950/40 text-white'
+                : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'}`}
           >
-            <option value={30}>30 fps</option>
-            <option value={60}>60 fps</option>
-          </select>
-        </Field>
+            <div className="font-medium text-sm flex items-center gap-2">
+              {bw === 'highest' && <span className="text-blue-400">●</span>}
+              フル品質
+            </div>
+            <div className="text-xs text-white/40 mt-1">
+              無圧縮の高画質モード。LAN 内のみ推奨。<br/>
+              帯域: 約 100–150 Mbps
+            </div>
+          </button>
+        </div>
+        <p className="text-xs text-white/30">
+          ※ 設定変更は次回接続時から有効になります。即時反映するには各拠点を再接続してください。
+        </p>
+      </div>
+
+      <div className="border-t border-white/8 pt-4" />
+
+      {/* 送信解像度 */}
+      <div>
+        <label className="block text-sm text-white/70 font-medium mb-2">送信設定（自拠点から配信する映像）</label>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="解像度">
+            <select
+              value={config?.video.resolution}
+              onChange={e => setConfig({ video: { ...config!.video, resolution: e.target.value as any } })}
+              className="input"
+            >
+              <option value="640x360">360p (640×360) - 軽量</option>
+              <option value="854x480">480p (854×480)</option>
+              <option value="1280x720">720p (1280×720)</option>
+              <option value="1920x1080">1080p (1920×1080)</option>
+            </select>
+          </Field>
+          <Field label="フレームレート">
+            <select
+              value={config?.video.frameRate}
+              onChange={e => setConfig({ video: { ...config!.video, frameRate: Number(e.target.value) as any } })}
+              className="input"
+            >
+              <option value={15}>15 fps - 軽量</option>
+              <option value={24}>24 fps</option>
+              <option value={30}>30 fps</option>
+              <option value={60}>60 fps</option>
+            </select>
+          </Field>
+        </div>
+        <p className="text-xs text-white/30 mt-2">
+          低解像度・低フレームレートを選ぶと、送信側の CPU・ネットワーク負荷を下げられます。
+        </p>
       </div>
     </div>
   );

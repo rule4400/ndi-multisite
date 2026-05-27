@@ -1,11 +1,23 @@
+/**
+ * NDIReceiver
+ *
+ * Worker Thread を起動して 1 拠点の NDI 映像/音声を受信する。
+ * Worker からは ArrayBuffer (transfer) でフレームが届く。
+ * メインプロセス側でフォーマット変換などはしない（高効率パススルー）。
+ */
 import { Worker } from 'worker_threads';
 import * as path from 'path';
 import log from 'electron-log';
 import { NDISource, StreamState } from '../../shared/types';
 
+export type Bandwidth = 'highest' | 'lowest';
+
+export type VideoCallback = (data: Uint8Array, w: number, h: number) => void;
+export type AudioCallback = (samples: Float32Array, sampleRate: number, channels: number) => void;
+
 export class NDIReceiver {
   private worker: Worker | null = null;
-  private siteId: string = '';
+  private siteId = '';
   private running = false;
   private fps = 0;
   private connected = false;
@@ -13,69 +25,82 @@ export class NDIReceiver {
   private hasAudio = false;
   private lastFrameAt = 0;
   private lastError: string | null = null;
-  private frameCallback: ((frame: Buffer, w: number, h: number) => void) | null = null;
-  private audioCallback: ((samples: Float32Array, sampleRate: number, channels: number) => void) | null = null;
 
   async connect(
     source: NDISource,
     siteId: string,
-    onFrame: (frame: Buffer, w: number, h: number) => void,
-    onAudio: (samples: Float32Array, sampleRate: number, channels: number) => void,
+    onFrame: VideoCallback,
+    onAudio: AudioCallback,
+    bandwidth: Bandwidth = 'lowest',
   ): Promise<void> {
     this.siteId = siteId;
-    this.frameCallback = onFrame;
-    this.audioCallback = onAudio;
     this.running = true;
+    this.lastError = null;
+    this.connected = false;
 
     try {
-      // Worker Threads は asar 内のファイルを実行できないため
-      // asarUnpack で展開されたパスを使用する
+      // asar 内では Worker は動かないため app.asar.unpacked パスへ書き換え
       const workerPath = path.join(__dirname, 'receiverWorker.js')
         .replace(/app\.asar([/\\])/, 'app.asar.unpacked$1');
+
       this.worker = new Worker(workerPath, {
-        workerData: { source, siteId },
+        workerData: { source, siteId, bandwidth },
       });
 
       this.worker.on('message', (msg: any) => {
-        if (msg.type === 'video') {
-          this.hasVideo = true;
-          this.connected = true; // 実際にフレームが届いた時だけ connected=true
-          this.lastFrameAt = Date.now();
-          this.fps = msg.fps ?? this.fps;
-          this.frameCallback?.(msg.data, msg.width, msg.height);
-        } else if (msg.type === 'audio') {
-          this.hasAudio = true;
-          this.connected = true;
-          this.audioCallback?.(new Float32Array(msg.data), msg.sampleRate, msg.channels);
-        } else if (msg.type === 'error') {
-          log.error(`NDI Receiver [${siteId}] error:`, msg.error);
-          this.lastError = msg.error;
-          this.connected = false;
-        } else if (msg.type === 'log') {
-          log.info(`NDI Worker [${siteId}]: ${msg.message}`);
-        } else if (msg.type === 'ready') {
-          log.info(`NDI Receiver worker ready: ${source.name} -> ${siteId}`);
-          // connected はまだ false のまま（フレーム受信時に true にする）
+        if (!msg || typeof msg !== 'object') return;
+
+        switch (msg.type) {
+          case 'video': {
+            try {
+              this.hasVideo = true;
+              this.connected = true;
+              this.lastFrameAt = Date.now();
+              if (typeof msg.fps === 'number') this.fps = msg.fps;
+              const view = new Uint8Array(msg.buffer);
+              onFrame(view, msg.width, msg.height);
+            } finally {
+              // フレーム処理完了を Worker に通知（バックプレッシャー解放）
+              this.worker?.postMessage({ type: 'ack' });
+            }
+            break;
+          }
+          case 'audio': {
+            this.hasAudio = true;
+            this.connected = true;
+            const view = new Float32Array(msg.buffer);
+            onAudio(view, msg.sampleRate, msg.channels);
+            break;
+          }
+          case 'ready':
+            log.info(`[NDI Receiver][${siteId}] worker ready -> ${source.name}`);
+            break;
+          case 'log':
+            log.info(`[NDI Receiver][${siteId}] ${msg.message}`);
+            break;
+          case 'error':
+            log.warn(`[NDI Receiver][${siteId}] ${msg.error}`);
+            this.lastError = msg.error;
+            break;
         }
       });
 
       this.worker.on('error', (err) => {
-        log.error(`NDI Receiver [${siteId}] worker error:`, err);
+        log.error(`[NDI Receiver][${siteId}] worker error:`, err);
         this.lastError = err.message;
         this.connected = false;
       });
 
       this.worker.on('exit', (code) => {
-        log.info(`NDI Receiver [${siteId}] worker exited with code ${code}`);
+        log.info(`[NDI Receiver][${siteId}] worker exited (code=${code})`);
         this.connected = false;
         this.running = false;
       });
 
-      // Worker起動しただけでは connected にしない（実際のフレーム受信を待つ）
-      this.connected = false;
-      log.info(`NDI Receiver worker started: ${source.name} -> ${siteId}`);
-    } catch (err) {
-      log.error(`Failed to start NDI Receiver worker for ${siteId}:`, err);
+      log.info(`[NDI Receiver][${siteId}] worker spawned for "${source.name}" (${source.urlAddress ?? '-'}) bandwidth=${bandwidth}`);
+    } catch (err: any) {
+      log.error(`[NDI Receiver][${siteId}] failed to spawn worker:`, err);
+      this.lastError = err.message;
       this.connected = false;
     }
   }
@@ -84,19 +109,15 @@ export class NDIReceiver {
     this.running = false;
     this.connected = false;
     if (this.worker) {
-      this.worker.postMessage({ type: 'stop' });
-      this.worker.terminate();
+      try { this.worker.postMessage({ type: 'stop' }); } catch (_) {}
+      this.worker.terminate().catch(() => {});
       this.worker = null;
     }
-    log.info(`NDI Receiver disconnected: ${this.siteId}`);
-  }
-
-  setVolume(_vol: number): void {
-    // Volume control is handled in AudioEngine
+    log.info(`[NDI Receiver][${this.siteId}] disconnected`);
   }
 
   getStatus(): StreamState {
-    // 最後のフレームから5秒以上経過したらdisconnected扱い
+    // 5 秒以上フレームが無ければ stale
     const stale = this.connected && this.lastFrameAt > 0
       && (Date.now() - this.lastFrameAt) > 5000;
     if (stale) {

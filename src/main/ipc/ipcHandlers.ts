@@ -50,6 +50,8 @@ export function setupIpcHandlers(window: BrowserWindow): void {
 
   ipcMain.handle(IPC.CONFIG_SET, async (_e, partial: any) => {
     configManager.set(partial);
+    // NDI エンジンに最新設定を反映（送信名・自拠点・拠点リストの変更を検知）
+    ndiEngine.applyConfig(configManager.get());
     // 同期設定が変わった場合はサーバー/クライアントを再起動
     if (partial.sync) {
       await syncManager.start();
@@ -58,13 +60,19 @@ export function setupIpcHandlers(window: BrowserWindow): void {
 
   ipcMain.handle(IPC.CONFIG_ADD_SITE, (_e, site: Site) => {
     configManager.addSite(site);
-    window.webContents.send(IPC.CONFIG_GET, configManager.get());
+    ndiEngine.applyConfig(configManager.get());
+    if (!window.isDestroyed()) {
+      window.webContents.send(IPC.CONFIG_GET, configManager.get());
+    }
   });
 
   ipcMain.handle(IPC.CONFIG_REMOVE_SITE, (_e, siteId: string) => {
     configManager.removeSite(siteId);
     ndiEngine.disconnectSite(siteId);
-    window.webContents.send(IPC.CONFIG_GET, configManager.get());
+    ndiEngine.applyConfig(configManager.get());
+    if (!window.isDestroyed()) {
+      window.webContents.send(IPC.CONFIG_GET, configManager.get());
+    }
   });
 
   ipcMain.handle(IPC.CONFIG_GET_MONITORS, () => {

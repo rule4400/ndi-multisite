@@ -186,7 +186,7 @@ const api = {
   },
 
   // NDI受信音声（main → renderer）
-  onAudioFrame: (cb: (frame: { siteId: string; data: number[]; sampleRate: number; channels: number }) => void) => {
+  onAudioFrame: (cb: (frame: { siteId: string; data: Float32Array; sampleRate: number; channels: number }) => void) => {
     const h = (_: any, frame: any) => cb(frame);
     ipcRenderer.on(IPC.STREAM_AUDIO_FRAME, h);
     return () => ipcRenderer.removeListener(IPC.STREAM_AUDIO_FRAME, h);

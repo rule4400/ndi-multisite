@@ -6,7 +6,11 @@
  */
 
 interface AudioChunk {
-  data: number[];       // Float32 PCM samples (planar interleaved)
+  /**
+   * NDI 標準フォーマット (Float32 Separate / Planar):
+   *   [L0, L1, ..., Ln, R0, R1, ..., Rn]  (チャネルごとに連続)
+   */
+  data: Float32Array | number[];
   sampleRate: number;
   channels: number;
 }
@@ -35,17 +39,22 @@ export class AudioPlayer {
     if (!this.context || !this.masterGain) return;
 
     const { data, sampleRate, channels } = chunk;
-    const totalSamples = data.length;
+    // ArrayLike → Float32Array に正規化
+    const samples = data instanceof Float32Array
+      ? data
+      : Float32Array.from(data as number[]);
+    const totalSamples = samples.length;
     const framesPerChannel = Math.floor(totalSamples / channels);
     if (framesPerChannel === 0) return;
 
     const buffer = this.context.createBuffer(channels, framesPerChannel, sampleRate);
+    // NDI standard: Float32 Separate / Planar
+    // [L0,L1,L2,...,Ln, R0,R1,R2,...,Rn]
     for (let ch = 0; ch < channels; ch++) {
       const channelData = buffer.getChannelData(ch);
-      for (let i = 0; i < framesPerChannel; i++) {
-        // grandiose audio: interleaved format [L0,R0,L1,R1,...]
-        channelData[i] = data[i * channels + ch] ?? 0;
-      }
+      const offset = ch * framesPerChannel;
+      // subarray は same buffer に view を作るだけなので 0-copy
+      channelData.set(samples.subarray(offset, offset + framesPerChannel));
     }
 
     const source = this.context.createBufferSource();

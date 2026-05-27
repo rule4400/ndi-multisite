@@ -21,6 +21,9 @@ export class NDISender {
   private sendInterval: NodeJS.Timeout | null = null;
 
   async start(sourceName: string, resolution: string, fps: number): Promise<void> {
+    // 既に動作中なら一度停止
+    if (this.running) this.stop();
+
     this.frameRate = fps;
     const [w, h] = resolution.split('x').map(Number);
     this.width = w;
@@ -33,14 +36,22 @@ export class NDISender {
         clockVideo: true,
         clockAudio: false,
       });
-      log.info(`NDI Sender started: ${sourceName}`);
+      log.info(`[NDI Sender] started: name="${sourceName}" ${w}x${h}@${fps}`);
     } catch (err) {
-      log.warn('NDI Sender unavailable (NDI SDK not installed?):', err);
+      log.warn('[NDI Sender] unavailable (NDI SDK not installed?):', err);
       return;
     }
 
     this.running = true;
-    this.sendInterval = setInterval(() => this.sendFrame(), Math.floor(1000 / this.frameRate));
+    this.sendInterval = setInterval(() => {
+      this.sendFrame().catch(e => {
+        const now = Date.now();
+        if (now - this.lastErrorLog >= this.ERROR_INTERVAL) {
+          log.error('[NDI Sender] interval handler error:', e);
+          this.lastErrorLog = now;
+        }
+      });
+    }, Math.floor(1000 / this.frameRate));
   }
 
   stop(): void {

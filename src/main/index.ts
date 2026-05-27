@@ -173,7 +173,24 @@ app.whenReady().then(async () => {
   }
 
   const config = configManager.get();
-  await ndiEngine.initialize(config, null);
+
+  // selfSiteId 未設定なら IP / hostname から自動判定して保存
+  if (!config.selfSiteId && config.sites.length > 0) {
+    const os = await import('os');
+    const localIPs = new Set<string>();
+    for (const addrs of Object.values(os.networkInterfaces())) {
+      for (const addr of addrs ?? []) {
+        if (addr.family === 'IPv4' && !addr.internal) localIPs.add(addr.address);
+      }
+    }
+    const ipMatch = config.sites.find(s => s.vpnIp?.trim() && localIPs.has(s.vpnIp.trim()));
+    if (ipMatch) {
+      log.info(`[Main] selfSiteId 自動判定 (IP): "${ipMatch.name}" (${ipMatch.vpnIp})`);
+      configManager.set({ selfSiteId: ipMatch.id });
+    }
+  }
+
+  await ndiEngine.initialize(configManager.get(), null);
   await createWindow();
   ndiEngine.setWindow(mainWindow!);
   syncManager.setWindow(mainWindow!);

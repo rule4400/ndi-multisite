@@ -205,6 +205,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   const focusOnClick  = useConfigStore(s => s.config?.ui.focusOnClick ?? true);
   const siteName      = useConfigStore(s => s.config?.siteName ?? '自拠点');
   const configSites   = useConfigStore(s => s.config?.sites ?? []);
+  const selfSiteId    = useConfigStore(s => s.config?.selfSiteId ?? null);
   const setConfig     = useConfigStore(s => s.setConfig);
   const role          = useAuthStore(s => s.role);
   const isFull        = role === 'full';
@@ -218,20 +219,24 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   const visibleSites = enabledSites.filter(s => !s.hidden);
   const hiddenSites  = enabledSites.filter(s =>  s.hidden);
 
+  // selfSiteId が拠点リスト中にある = 自拠点として独自セルを表示するため
+  // 別個の LOCAL_ID セルは不要。逆に未設定なら従来通り LOCAL_ID を先頭に表示。
+  const showStandaloneLocal = isFull && !selfSiteId;
+
   // ── 表示順 ──────────────────────────────────────────
-  const [cellOrder, setCellOrder] = useState<string[]>(() =>
-    isFull ? [LOCAL_ID, ...visibleSites.map(s => s.id)] : visibleSites.map(s => s.id)
-  );
+  const [cellOrder, setCellOrder] = useState<string[]>(() => {
+    const base = visibleSites.map(s => s.id);
+    return showStandaloneLocal ? [LOCAL_ID, ...base] : base;
+  });
   useEffect(() => {
-    const newIds = isFull
-      ? [LOCAL_ID, ...visibleSites.map(s => s.id)]
-      : visibleSites.map(s => s.id);
+    const base = visibleSites.map(s => s.id);
+    const newIds = showStandaloneLocal ? [LOCAL_ID, ...base] : base;
     setCellOrder(prev => {
       const kept  = prev.filter(id => newIds.includes(id));
       const added = newIds.filter(id => !prev.includes(id));
       return [...kept, ...added];
     });
-  }, [sites, isFull]); // eslint-disable-line
+  }, [sites, isFull, selfSiteId]); // eslint-disable-line
 
   // ── フォーカス（最大 MAX_FOCUS 件）──────────────────
   const [focusedIds, setFocusedIds] = useState<string[]>([]);
@@ -363,20 +368,27 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ sites, streamStatuses }) =
   const orderedCells = useMemo<CellItem[]>(() =>
     cellOrder
       .map(id => {
-        if (id === LOCAL_ID && isFull) return { id: LOCAL_ID, isLocal: true };
+        if (id === LOCAL_ID && showStandaloneLocal) {
+          return { id: LOCAL_ID, isLocal: true };
+        }
         const site = visibleSites.find(s => s.id === id);
-        return site ? { id, isLocal: false, site } : null;
+        if (!site) return null;
+        // selfSiteId とマッチするサイト = 自拠点セル（LocalVideoCell でカメラ映像を出す）
+        const isLocal = isFull && site.id === selfSiteId;
+        return { id, isLocal, site };
       })
       .filter((x): x is CellItem => x !== null),
-    [cellOrder, isFull, visibleSites]
+    [cellOrder, isFull, visibleSites, selfSiteId, showStandaloneLocal]
   );
 
   // ── セルレンダーヘルパー ──────────────────────────
   const renderCell = (cell: CellItem, zone: 'main' | 'sub' | 'grid') => {
     if (cell.isLocal) {
+      // 自拠点セル（site が紐づいていればその名前、なければ siteName）
+      const label = cell.site?.name ?? siteName;
       return (
         <LocalVideoCell
-          siteName={siteName}
+          siteName={label}
           focused={focusedIds.includes(cell.id)}
           onClick={() => handleClick(cell.id)}
           onContextMenu={e => handleContextMenu(e, cell.id, true)}

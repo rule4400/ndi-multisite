@@ -5,6 +5,7 @@ const DEFAULT_CONFIG: AppConfig = {
   siteName: '本部',
   ndiSourceName: 'NDI-Multisite-Local',
   discoveryServerIp: '',
+  selfSiteId: null,
   sites: [],
   sync: {
     mode: 'none',
@@ -15,6 +16,7 @@ const DEFAULT_CONFIG: AppConfig = {
   video: {
     resolution: '1280x720',
     frameRate: 30,
+    receiveBandwidth: 'lowest',  // 既定で NDI HX (プロキシ) モード
   },
   ui: {
     gridLayout: 'auto',
@@ -47,7 +49,13 @@ export class ConfigManager {
 
   addSite(site: import('../../shared/types').Site): void {
     const sites = this.store.get('sites') as import('../../shared/types').Site[];
-    sites.push(site);
+    // 重複チェック: 同じ ID は上書き、同じ IP/名前のサイトがあれば追加せず更新
+    const sameId = sites.findIndex(s => s.id === site.id);
+    if (sameId !== -1) {
+      sites[sameId] = site;
+    } else {
+      sites.push(site);
+    }
     this.store.set('sites', sites);
   }
 
@@ -55,5 +63,8 @@ export class ConfigManager {
     const sites = (this.store.get('sites') as import('../../shared/types').Site[])
       .filter(s => s.id !== siteId);
     this.store.set('sites', sites);
+    // 削除したサイトが selfSiteId だった場合はクリア
+    const selfId = this.store.get('selfSiteId') as string | null;
+    if (selfId === siteId) this.store.set('selfSiteId', null);
   }
 }
