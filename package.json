@@ -1,6 +1,6 @@
 {
   "name": "ndi-multisite",
-  "version": "1.6.8",
+  "version": "1.6.9",
   "description": "13拠点 常時接続 映像音声共有アプリケーション",
   "author": "Your Organization",
   "main": "dist/main/index.js",
