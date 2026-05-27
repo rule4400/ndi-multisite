@@ -4,12 +4,61 @@
  * 自拠点のカメラプレビュー＋NDI送信セル。
  * - カメラ・マイクデバイスを選択可能
  * - 選択したカメラ映像をオフスクリーン canvas で RGBA 取得 → IPC → main → NDI 送信
- * - 選択したマイク音声を ScriptProcessor で PCM 取得 → IPC → main → NDI 送信
+ * - 選択したマイク音声を AudioWorklet (専用音声スレッド) で PCM 取得 → IPC → main → NDI 送信
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useDeviceStore } from '../stores/useDeviceStore';
 import { api } from '../bridge/api';
+
+/**
+ * AudioWorkletProcessor を Blob URL として注入する。
+ * 専用音声スレッドで動くためメインスレッド GC の影響を受けず、ぷつぷつ音が起きにくい。
+ *
+ * 1024 frames (約 21ms @ 48kHz) ごとにメインスレッドへ送信し、リアルタイム性を保つ。
+ */
+const MIC_WORKLET_SOURCE = `
+class MicProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.target = 1024;
+    this.bufL = new Float32Array(this.target);
+    this.bufR = new Float32Array(this.target);
+    this.filled = 0;
+  }
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || input.length === 0) return true;
+    const inL = input[0];
+    const inR = input[1] || input[0];
+    if (!inL) return true;
+    let i = 0;
+    const n = inL.length;
+    while (i < n) {
+      const space = this.target - this.filled;
+      const copy = Math.min(space, n - i);
+      this.bufL.set(inL.subarray(i, i + copy), this.filled);
+      this.bufR.set(inR.subarray(i, i + copy), this.filled);
+      this.filled += copy;
+      i += copy;
+      if (this.filled >= this.target) {
+        const interleaved = new Float32Array(this.target * 2);
+        for (let j = 0; j < this.target; j++) {
+          interleaved[j * 2] = this.bufL[j];
+          interleaved[j * 2 + 1] = this.bufR[j];
+        }
+        this.port.postMessage(
+          { samples: interleaved, sampleRate, channels: 2 },
+          [interleaved.buffer]
+        );
+        this.filled = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('mic-processor', MicProcessor);
+`;
 
 interface LocalVideoCellProps {
   siteName: string;
@@ -30,8 +79,9 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const workletUrlRef = useRef<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -41,14 +91,19 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
   const selectedCameraId = useDeviceStore(s => s.selectedCameraId);
   const selectedMicId    = useDeviceStore(s => s.selectedMicId);
 
+  // ── ストリーム停止 ─────────────────────────────────────
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    if (captureTimerRef.current) { clearInterval(captureTimerRef.current); captureTimerRef.current = null; }
+    if (workletNodeRef.current)  { try { workletNodeRef.current.disconnect(); } catch (_) {} workletNodeRef.current = null; }
+    if (audioCtxRef.current)     { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+    if (workletUrlRef.current)   { URL.revokeObjectURL(workletUrlRef.current); workletUrlRef.current = null; }
+  }, []);
+
   // ── ストリーム起動 ──────────────────────────────────────
   const startStream = useCallback(async () => {
-    // 既存ストリームを停止
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    if (captureTimerRef.current) clearInterval(captureTimerRef.current);
-    audioCtxRef.current?.close();
-    processorRef.current = null;
-
+    stopStream();
     setReady(false);
     setError(null);
 
@@ -93,43 +148,48 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
         }, Math.floor(1000 / NDI_FPS));
       }
 
-      // ── NDI 音声キャプチャ（ScriptProcessorNode）──
-      startAudioCapture(stream);
+      // ── NDI 音声キャプチャ（AudioWorklet 専用音声スレッド）──
+      await startAudioCapture(stream);
 
     } catch (err: any) {
       if (err.name === 'NotAllowedError')  setError('カメラ・マイクへのアクセスが拒否されました');
       else if (err.name === 'NotFoundError') setError('デバイスが見つかりません');
       else setError('デバイスを起動できません');
     }
-  }, [selectedCameraId, selectedMicId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCameraId, selectedMicId, stopStream]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startAudioCapture = (stream: MediaStream) => {
+  const startAudioCapture = async (stream: MediaStream) => {
     try {
       const audioTracks = stream.getAudioTracks();
       if (audioTracks.length === 0) return;
 
-      const audioCtx = new AudioContext({ sampleRate: 48000 });
+      const audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
       audioCtxRef.current = audioCtx;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const processor = audioCtx.createScriptProcessor(2048, 2, 2);
-      processorRef.current = processor;
+      // Worklet モジュールを Blob URL として登録
+      const blob = new Blob([MIC_WORKLET_SOURCE], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      workletUrlRef.current = url;
+      await audioCtx.audioWorklet.addModule(url);
 
-      processor.onaudioprocess = (e) => {
+      const sourceNode = audioCtx.createMediaStreamSource(stream);
+      const workletNode = new AudioWorkletNode(audioCtx, 'mic-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 2,
+        channelCountMode: 'explicit',
+        channelInterpretation: 'speakers',
+      });
+      workletNodeRef.current = workletNode;
+
+      workletNode.port.onmessage = (e) => {
         if (!micEnabled) return;
-        const L = e.inputBuffer.getChannelData(0);
-        const R = e.inputBuffer.getChannelData(1);
-        // インターリーブ: L0,R0,L1,R1,...
-        const interleaved = new Float32Array(L.length * 2);
-        for (let i = 0; i < L.length; i++) {
-          interleaved[i * 2]     = L[i];
-          interleaved[i * 2 + 1] = R[i];
-        }
-        api.sendAudioChunk(interleaved, audioCtx.sampleRate, 2);
+        const { samples, sampleRate, channels } = e.data;
+        // Float32Array をそのまま main プロセスへ転送
+        api.sendAudioChunk(samples, sampleRate, channels);
       };
 
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
+      sourceNode.connect(workletNode);
     } catch (err) {
       console.warn('音声キャプチャ起動失敗:', err);
     }
@@ -139,12 +199,10 @@ export const LocalVideoCell: React.FC<LocalVideoCellProps> = ({
   useEffect(() => {
     startStream();
     return () => {
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      if (captureTimerRef.current) clearInterval(captureTimerRef.current);
-      audioCtxRef.current?.close();
+      stopStream();
       setReady(false);
     };
-  }, [startStream]);
+  }, [startStream, stopStream]);
 
   // カメラ有効/無効の切替
   useEffect(() => {

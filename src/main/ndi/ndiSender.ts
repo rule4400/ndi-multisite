@@ -37,8 +37,13 @@ export class NDISender {
   // 映像送信用インターバル（音声は即時送信のためインターバル不要）
   private videoInterval: NodeJS.Timeout | null = null;
 
-  // 音声送信時の二重実行ガード
-  private audioBusy = false;
+  // 音声送信キュー（FIFO、シリアル処理）
+  private audioQueue: Array<{
+    sampleRate: number; noChannels: number; noSamples: number;
+    channelStrideBytes: number; data: Buffer;
+  }> = [];
+  private audioProcessing = false;
+  private readonly MAX_AUDIO_QUEUE = 30; // 約 1.3 秒分（2048 sample / 48kHz × 30 ≈ 1.28s）
 
   async start(sourceName: string, resolution: string, fps: number): Promise<void> {
     if (this.running) this.stop();
@@ -79,6 +84,8 @@ export class NDISender {
     if (this.videoInterval) { clearInterval(this.videoInterval); this.videoInterval = null; }
     if (this.sender) { try { this.sender.destroy?.(); } catch (_) {} this.sender = null; }
     this.latestFrame = null;
+    this.audioQueue = [];
+    this.audioProcessing = false;
     log.info('[NDI Sender] stopped');
   }
 
@@ -92,53 +99,64 @@ export class NDISender {
   }
 
   /**
-   * renderer からのインターリーブ PCM をプラナーに変換して
-   * 即座に NDI に送出する。
-   * 1秒間に約 24 回呼ばれるため、ここでキューイングは行わない。
+   * renderer からのインターリーブ PCM をプラナーに変換してキューに積み、
+   * 別タスクで FIFO 順に NDI に送出する。
+   *
+   * 設計:
+   *   - 受け取りは O(1) ですぐ返す
+   *   - 送信ループが queue を逐次処理し、grandiose の audio() を順番に呼ぶ
+   *   - キューが MAX を超えたら古いものを捨てる（リアルタイム性 > 完全性）
    */
   pushAudioChunk(data: Float32Array, sampleRate: number, channels: number): void {
     if (!this.running || !this.sender || !this.micEnabled) return;
     if (!data || data.length === 0 || channels < 1) return;
-    if (this.audioBusy) return; // 前回送信中ならドロップ（バックプレッシャー）
-    this.audioBusy = true;
 
-    try {
-      const samplesPerCh = Math.floor(data.length / channels);
-      if (samplesPerCh === 0) { this.audioBusy = false; return; }
+    const samplesPerCh = Math.floor(data.length / channels);
+    if (samplesPerCh === 0) return;
 
-      // インターリーブ [L0,R0,L1,R1,...] → プラナー [L0,L1,...,Ln, R0,R1,...,Rn]
-      const planar = new Float32Array(samplesPerCh * channels);
-      for (let ch = 0; ch < channels; ch++) {
-        for (let i = 0; i < samplesPerCh; i++) {
-          planar[ch * samplesPerCh + i] = data[i * channels + ch];
-        }
+    // インターリーブ [L0,R0,L1,R1,...] → プラナー [L0,L1,...,Ln, R0,R1,...,Rn]
+    const planar = new Float32Array(samplesPerCh * channels);
+    for (let ch = 0; ch < channels; ch++) {
+      for (let i = 0; i < samplesPerCh; i++) {
+        planar[ch * samplesPerCh + i] = data[i * channels + ch];
       }
+    }
 
-      // NDI に送出（fourCC=FLTp = Float Planar が必須）
-      this.sender.audio({
-        sampleRate,
-        noChannels: channels,
-        noSamples: samplesPerCh,
-        channelStrideBytes: samplesPerCh * 4, // Float32 = 4 bytes
-        fourCC: this.grandiose.FOURCC_FLTp,
-        data: Buffer.from(planar.buffer),
-      })
-      .catch((err: any) => {
+    // キューに積む（上限超過時は古いものから破棄してリアルタイム性を優先）
+    this.audioQueue.push({
+      sampleRate,
+      noChannels: channels,
+      noSamples: samplesPerCh,
+      channelStrideBytes: samplesPerCh * 4,
+      data: Buffer.from(planar.buffer),
+    });
+    while (this.audioQueue.length > this.MAX_AUDIO_QUEUE) {
+      this.audioQueue.shift();
+    }
+
+    if (!this.audioProcessing) this.processAudioQueue();
+  }
+
+  /** 音声キューを FIFO で順次 NDI に送出するループ */
+  private async processAudioQueue(): Promise<void> {
+    if (this.audioProcessing) return;
+    this.audioProcessing = true;
+    while (this.running && this.sender && this.audioQueue.length > 0) {
+      const chunk = this.audioQueue.shift()!;
+      try {
+        await this.sender.audio({
+          ...chunk,
+          fourCC: this.grandiose.FOURCC_FLTp,
+        });
+      } catch (err: any) {
         const now = Date.now();
         if (now - this.lastAudioErrorLog >= this.ERROR_INTERVAL) {
           log.error('[NDI Sender] audio send error:', err?.message);
           this.lastAudioErrorLog = now;
         }
-      })
-      .finally(() => { this.audioBusy = false; });
-    } catch (err: any) {
-      this.audioBusy = false;
-      const now = Date.now();
-      if (now - this.lastAudioErrorLog >= this.ERROR_INTERVAL) {
-        log.error('[NDI Sender] audio prep error:', err?.message);
-        this.lastAudioErrorLog = now;
       }
     }
+    this.audioProcessing = false;
   }
 
   /** 映像フレーム送信（インターバルから呼ばれる） */
